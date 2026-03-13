@@ -9,7 +9,13 @@ const CONFIG = {
   chainIdHex: "0x38",
   chainId: 56,
   chainName: "BSC Mainnet",
-  rpcUrl: "https://bsc-dataseed.binance.org",
+  // 多个 RPC 备用，按顺序优先，自动故障转移
+  rpcUrls: [
+    "https://bsc-dataseed1.ninicoin.io",
+    "https://bsc-dataseed.binance.org",
+    "https://bscrpc.com",
+    "https://1rpc.io/bnb"
+  ],
   blockExplorer: "https://bscscan.com",
 
   // 合约地址 - 请根据实际部署修改
@@ -181,6 +187,51 @@ const PREFERRED_WALLET_ORDER = [
   "math",
   "injected"
 ];
+
+// ============================================
+// 网络与环境辅助
+// ============================================
+
+function isInAppWallet() {
+  const ua = (navigator.userAgent || "").toLowerCase();
+  return (
+    ua.includes("tokenpocket") ||
+    ua.includes("okapp") ||
+    ua.includes("okxwallet") ||
+    ua.includes("okexwallet") ||
+    ua.includes("metamask") ||
+    ua.includes("trustwallet") ||
+    ua.includes("bitkeep") ||
+    ua.includes("tpwallet")
+  );
+}
+
+async function withTimeout(promise, ms = 2500) {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error("RPC 连接超时")), ms);
+  });
+  try {
+    return await Promise.race([promise, timeout]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function createProviderWithFallback() {
+  for (const url of CONFIG.rpcUrls) {
+    try {
+      const provider = new ethers.JsonRpcProvider(url, CONFIG.chainId);
+      // 快速探测高度，失败则切换下一个
+      await withTimeout(provider.getBlockNumber());
+      console.log("已选用 RPC:", url);
+      return provider;
+    } catch (e) {
+      console.warn("RPC 不可用，尝试下一个:", url, e.message);
+    }
+  }
+  throw new Error("所有 RPC 均不可用，请检查网络连接。");
+}
 
 // ============================================
 // 工具函数
@@ -1276,8 +1327,8 @@ function updateWalletButtonState() {
 }
 
 async function loadContracts() {
-  // 初始化 provider
-  state.provider = new ethers.JsonRpcProvider(CONFIG.rpcUrl, CONFIG.chainId);
+  // 初始化 provider，自动故障转移
+  state.provider = await createProviderWithFallback();
 
   // 初始化合约
   state.revenueShare = new ethers.Contract(CONFIG.revenueShare, REVENUE_SHARE_ABI, state.provider);
@@ -1564,6 +1615,15 @@ async function connectWallet() {
   }
 }
 
+async function autoConnectInAppWallet() {
+  if (!isInAppWallet()) return;
+  const providers = getInjectedProviders();
+  if (!providers.length) return;
+  const preferredWalletType = getPreferredWalletType() || "injected";
+  setStatus("检测到钱包内置浏览器，正在自动连接...", "warn");
+  await connectWithWallet(preferredWalletType);
+}
+
 async function switchToBsc() {
   const provider = window.currentProvider || window.ethereum;
   if (!provider) {
@@ -1586,7 +1646,7 @@ async function switchToBsc() {
             chainId: CONFIG.chainIdHex,
             chainName: CONFIG.chainName,
             nativeCurrency: { name: "BNB", symbol: "BNB", decimals: 18 },
-            rpcUrls: [CONFIG.rpcUrl],
+            rpcUrls: CONFIG.rpcUrls,
             blockExplorerUrls: [CONFIG.blockExplorer]
           }]
         });
@@ -2333,6 +2393,9 @@ async function init() {
     ui.connectBtn.addEventListener("click", connectWallet);
     ui.switchBtn.addEventListener("click", switchToBsc);
     ui.copyRefLinkBtn.addEventListener("click", copyReferralLink);
+
+    // 移动端钱包内置浏览器自动连接
+    await autoConnectInAppWallet();
 
     // 钱包模态框事件
     ui.closeWalletModal.addEventListener("click", hideWalletModal);
