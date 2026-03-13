@@ -1507,18 +1507,26 @@ async function connectWithWallet(walletType) {
   }
 }
 
-// 保持向后兼容的通用连接函数
+// 保持向后兼容的通用连接函数 - 优先使用 TP 钱包
 async function connectWallet() {
   const providers = getInjectedProviders();
   if (!providers.length) {
     if (isFileProtocol()) {
       setStatus("未检测到钱包。你当前可能是直接用 file:// 打开的页面，请改用本地 HTTP 服务，或在钱包扩展里开启“允许访问文件网址”。", "error");
     } else {
-      setStatus("未检测到浏览器钱包。请先安装 MetaMask、OKX Wallet、Trust Wallet 等插件。", "error");
+      setStatus("未检测到浏览器钱包。推荐使用 TokenPocket (TP) 钱包，也可使用 MetaMask、Trust Wallet 等插件。", "error");
     }
     return;
   }
 
+  // 优先检查是否有 TP 钱包
+  const tpProvider = resolveProvider("tokenpocket");
+  if (tpProvider) {
+    await connectWithWallet("tokenpocket");
+    return;
+  }
+
+  // 其次检查其他钱包
   if (providers.length === 1) {
     await connectWithWallet("injected");
     return;
