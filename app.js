@@ -1,0 +1,2342 @@
+// ============================================
+// Asset Mall - DApp 前端逻辑
+// 适用于 GitHub Pages 静态部署
+// ============================================
+
+// 配置 - 根据部署的合约地址修改
+const CONFIG = {
+  // BSC 主网配置
+  chainIdHex: "0x38",
+  chainId: 56,
+  chainName: "BSC Mainnet",
+  rpcUrl: "https://bsc-dataseed.binance.org",
+  blockExplorer: "https://bscscan.com",
+
+  // 合约地址 - 请根据实际部署修改
+  revenueShare: "0x30851a4af557427c90e3423219709d44cd7b8db5",
+  rewarder: "0xc720ae4138c8cc1eaf310c4fe164d0a8d9f6bb93",
+  oracle: "0xdc3f09c0ff92d391c1c9b8f4129cd46ca259d377",
+
+  // 管理员钱包地址列表 - 可以添加多个管理员
+  // 这些地址将拥有查看和管理所有订单的权限
+  adminWallets: [
+    // 示例格式（请替换为实际地址）:
+    // "0x1234567890123456789012345678901234567890",
+    // "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd",
+  ]
+};
+
+// ABI 定义
+const REVENUE_SHARE_ABI = [
+  "function owner() view returns (address)",
+  "function usdt() view returns (address)",
+  "function productCostBps() view returns (uint16)",
+  "function rewardBps() view returns (uint16)",
+  "function referrerOf(address) view returns (address)",
+  "function purchase(uint256 usdtAmount, address referrer, uint256 minAssetAmount)",
+  "function previewSplit(address user, uint256 usdtAmount) view returns (address directRecipient, address indirectRecipient, uint256 directAmount, uint256 indirectAmount, uint256 feeAmount, uint256 productCostAmount, uint256 rewardAmount)",
+  "function feeWallet() view returns (address)",
+  "function productCostWallet() view returns (address)",
+  "function rewardWallet() view returns (address)",
+  "function defaultDirectWallet() view returns (address)",
+  "function defaultIndirectWallet() view returns (address)",
+  "function assetARewarder() view returns (address)",
+  "function setWallets(address feeWallet, address productCostWallet, address rewardWallet, address defaultDirectWallet, address defaultIndirectWallet)",
+  "function setAssetARewarder(address newRewarder)",
+  "function setProductCostBps(uint16 newProductCostBps)"
+];
+
+const REWARDER_ABI = [
+  "function assetToken() view returns (address)",
+  "function assetSourceWallet() view returns (address)",
+  "function revenueShareContract() view returns (address)",
+  "function assetOracle() view returns (address)",
+  "function previewReward(uint256 rewardUsdtAmount) view returns (uint256)"
+];
+
+const ERC20_ABI = [
+  "function symbol() view returns (string)",
+  "function decimals() view returns (uint8)",
+  "function balanceOf(address) view returns (uint256)",
+  "function allowance(address owner, address spender) view returns (uint256)",
+  "function approve(address spender, uint256 amount) returns (bool)"
+];
+
+const REVERT_ERROR_IFACE = new ethers.Interface([
+  "error Error(string)",
+  "error Panic(uint256)"
+]);
+
+// 应用状态
+const state = {
+  provider: null,
+  browserProvider: null,
+  signer: null,
+  account: null,
+  chainId: null,
+  lastWalletType: null,
+  activeWalletProvider: null,
+  isSubmitting: false,
+  adminAddress: ethers.ZeroAddress,
+  isAdmin: false,
+  products: [],
+  selectedProductId: null,
+  editingProductId: null,
+  revenueShare: null,
+  rewarder: null,
+  usdt: null,
+  asset: null,
+  usdtAddress: null,
+  assetAddress: null,
+  usdtSymbol: "USDT",
+  assetSymbol: "ASSET",
+  usdtDecimals: 18,
+  assetDecimals: 18,
+  productCostBps: 0n,
+  rewardBps: 0n,
+  boundReferrer: ethers.ZeroAddress,
+  lastPreviewReward: 0n,
+  lastSplitPreview: null
+};
+
+// UI 元素引用
+const ui = {};
+
+// 存储键
+const STORAGE_KEY = "assetMallOrdersV1";
+const PRODUCT_STORAGE_KEY = "assetMallProductsV1";
+const DEFAULT_PRODUCTS = [
+  {
+    id: "starter-pack",
+    sku: "SKU-STARTER-001",
+    name: "入门体验套餐",
+    tag: "新客推荐",
+    originalPrice: "1.2",
+    price: "1",
+    image: "🚀",
+    description: "适合首次下单用户，快速体验商城购买和链上奖励发放流程。",
+    active: true
+  },
+  {
+    id: "growth-pack",
+    sku: "SKU-GROWTH-002",
+    name: "成长进阶套餐",
+    tag: "热卖",
+    originalPrice: "2.4",
+    price: "2",
+    image: "💎",
+    description: "适合持续参与用户，享受更高金额的奖励分账和订单跟踪服务。",
+    active: true
+  },
+  {
+    id: "premium-pack",
+    sku: "SKU-PREMIUM-003",
+    name: "旗舰尊享套餐",
+    tag: "高端",
+    originalPrice: "3.6",
+    price: "3",
+    image: "🏆",
+    description: "面向高净值用户，适合批量采购、渠道合作和私域裂变推广。",
+    active: true
+  }
+];
+
+const WALLET_CONFIG = {
+  metamask: {
+    name: "MetaMask",
+    match: (provider) => !!provider?.isMetaMask && !provider?.isTrust && !provider?.isTokenPocket
+  },
+  trust: {
+    name: "Trust Wallet",
+    match: (provider) => !!provider?.isTrust || !!provider?.isTrustWallet
+  },
+  tokenpocket: {
+    name: "TokenPocket",
+    match: (provider) => !!provider?.isTokenPocket
+  },
+  math: {
+    name: "Math Wallet",
+    match: (provider) => !!provider?.isMathWallet
+  },
+  binance: {
+    name: "Binance Wallet",
+    match: (provider) => !!provider?.isBinance
+  },
+  okx: {
+    name: "OKX Wallet",
+    match: (provider) => !!provider?.isOKExWallet || !!provider?.isOkxWallet
+  },
+  injected: {
+    name: "浏览器钱包",
+    match: (provider) => !!provider
+  }
+};
+
+// ============================================
+// 工具函数
+// ============================================
+
+function setStatus(message, type = "") {
+  ui.statusBox.textContent = message;
+  ui.statusBox.className = "status";
+  if (type) ui.statusBox.classList.add(type);
+}
+
+function setOrderStatus(message, type = "") {
+  ui.orderStatusBox.textContent = message;
+  ui.orderStatusBox.className = "status";
+  if (type) ui.orderStatusBox.classList.add(type);
+}
+
+function shortAddress(value) {
+  if (!value || value === ethers.ZeroAddress) return "-";
+  return value.slice(0, 6) + "..." + value.slice(-4);
+}
+
+function formatDateTime(value) {
+  if (!value) return "-";
+  const date = new Date(value);
+  return date.toLocaleString("zh-CN");
+}
+
+function formatUnits(value, decimals, digits = 6) {
+  if (value == null) return "-";
+  try {
+    const text = ethers.formatUnits(value, decimals);
+    const [intPart, fracPart = ""] = text.split(".");
+    if (!fracPart) return intPart;
+    const trimmedFrac = fracPart.slice(0, digits).replace(/0+$/, "");
+    return trimmedFrac ? intPart + "." + trimmedFrac : intPart;
+  } catch (e) {
+    return "-";
+  }
+}
+
+function formatPercentFromBps(bps) {
+  try {
+    return (Number(bps) / 100).toFixed(2).replace(/\.00$/, "") + "%";
+  } catch (e) {
+    return "-";
+  }
+}
+
+function parseAmount(value, decimals) {
+  const trimmed = String(value).trim();
+  if (!trimmed) return 0n;
+  try {
+    return ethers.parseUnits(trimmed, decimals);
+  } catch (e) {
+    return 0n;
+  }
+}
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+function collectErrorDetails(error, bucket = new Set(), depth = 0) {
+  if (!error || depth > 4) return bucket;
+
+  if (typeof error === "string") {
+    bucket.add(error);
+    return bucket;
+  }
+
+  if (typeof error !== "object") {
+    return bucket;
+  }
+
+  const candidateKeys = [
+    "message",
+    "shortMessage",
+    "reason",
+    "data",
+    "body",
+    "responseText",
+    "details"
+  ];
+
+  candidateKeys.forEach((key) => {
+    const value = error[key];
+    if (typeof value === "string" && value.trim()) {
+      bucket.add(value);
+    }
+  });
+
+  const nestedKeys = [
+    "error",
+    "info",
+    "cause",
+    "data",
+    "payload",
+    "response",
+    "originalError"
+  ];
+
+  nestedKeys.forEach((key) => {
+    if (error[key] && error[key] !== error) {
+      collectErrorDetails(error[key], bucket, depth + 1);
+    }
+  });
+
+  return bucket;
+}
+
+function extractHexData(value) {
+  if (typeof value !== "string") return "";
+  const match = value.match(/0x[0-9a-fA-F]{8,}/);
+  return match ? match[0] : "";
+}
+
+function decodeRevertData(data) {
+  if (!data || typeof data !== "string" || !data.startsWith("0x")) {
+    return "";
+  }
+
+  try {
+    const parsed = REVERT_ERROR_IFACE.parseError(data);
+    if (!parsed) return "";
+
+    if (parsed.name === "Error") {
+      return parsed.args[0];
+    }
+
+    if (parsed.name === "Panic") {
+      return `合约 Panic(${parsed.args[0].toString()})`;
+    }
+  } catch (error) {
+    // ignore decode failures
+  }
+
+  return "";
+}
+
+function extractError(error) {
+  const details = Array.from(collectErrorDetails(error));
+
+  for (const detail of details) {
+    const decoded = decodeRevertData(extractHexData(detail));
+    if (decoded) {
+      return decoded;
+    }
+  }
+
+  for (const detail of details) {
+    const normalized = detail.toLowerCase();
+    if (normalized.includes("user rejected")) return "用户取消了交易";
+    if (normalized.includes("insufficient funds")) return "BNB 余额不足支付 Gas 费";
+  }
+
+  for (const detail of details) {
+    if (!detail.includes("Internal JSON-RPC error")) {
+      return detail;
+    }
+  }
+
+  if (error?.message) {
+    const msg = error.message;
+    if (msg.includes("Internal JSON-RPC error")) {
+      return "钱包返回了笼统的 JSON-RPC 错误，请查看下方合约回退原因或浏览器控制台。";
+    }
+    return msg;
+  }
+
+  return "未知错误";
+}
+
+async function buildPurchaseTxRequest(usdtAmount, referrer, minAssetAmount) {
+  const signerRevenueShare = state.revenueShare.connect(state.signer);
+  const txRequest = await signerRevenueShare.purchase.populateTransaction(usdtAmount, referrer, minAssetAmount);
+  txRequest.from = state.account;
+  return txRequest;
+}
+
+async function simulatePurchase(usdtAmount, referrer, minAssetAmount) {
+  const txRequest = await buildPurchaseTxRequest(usdtAmount, referrer, minAssetAmount);
+
+  await state.provider.call(txRequest);
+
+  try {
+    return await state.provider.estimateGas(txRequest);
+  } catch (error) {
+    console.warn("公共 RPC 估算 Gas 失败，将在发送阶段回退到默认 gasLimit:", error);
+    return null;
+  }
+}
+
+// 详细的错误分析
+function analyzeError(error) {
+  const analysis = {
+    type: "unknown",
+    message: extractError(error),
+    suggestion: ""
+  };
+
+  const msg = Array.from(collectErrorDetails(error)).join(" | ").toLowerCase();
+  const errorMessage = (error?.message || "").toLowerCase();
+  const errorData = error?.data || error?.error?.data || "";
+
+  // 检查错误数据中的 revert reason
+  if (errorData && typeof errorData === 'string') {
+    // 尝试解码 revert reason
+    if (errorData.includes('0x08c379a0')) {
+      analysis.type = "contract_revert";
+      analysis.suggestion = "合约执行被回滚，可能是参数错误或合约状态问题";
+    }
+  }
+
+  if (msg.includes("allowance") || msg.includes("approval")) {
+    analysis.type = "allowance";
+    analysis.suggestion = "请先点击'授权 USDT'按钮授权合约使用您的 USDT";
+  } else if (msg.includes("insufficient funds")) {
+    analysis.type = "gas";
+    analysis.suggestion = "您的 BNB 余额不足，无法支付交易手续费(Gas费)";
+  } else if (msg.includes("user rejected") || msg.includes("rejected")) {
+    analysis.type = "rejected";
+    analysis.suggestion = "您在钱包中取消了交易，如需购买请重新确认";
+  } else if (msg.includes("rewarder not set") || msg.includes("rewarder")) {
+    analysis.type = "contract_config";
+    analysis.suggestion = "合约配置错误：奖励合约未设置，请联系管理员";
+  } else if (msg.includes("revenueshare 配置错误") || msg.includes("当前绑定的 rewarder")) {
+    analysis.type = "rewarder_binding";
+    analysis.suggestion = "RevenueShare 合约绑定了错误的 Rewarder 地址，请管理员重新调用 setAssetARewarder 指向正确的 Rewarder 合约";
+  } else if (msg.includes("referrer mismatch")) {
+    analysis.type = "referrer";
+    analysis.suggestion = "推荐人地址不匹配，请使用最初绑定的推荐人";
+  } else if (msg.includes("amount is zero")) {
+    analysis.type = "amount";
+    analysis.suggestion = "USDT 金额必须大于 0";
+  } else if (msg.includes("circular referral")) {
+    analysis.type = "referrer";
+    analysis.suggestion = "不能设置循环推荐关系";
+  } else if (msg.includes("self referral")) {
+    analysis.type = "referrer";
+    analysis.suggestion = "不能将自己设为推荐人";
+  } else if (msg.includes("asset amount below minimum")) {
+    analysis.type = "slippage";
+    analysis.suggestion = "滑点保护触发：实际奖励低于最低预期，请增加滑点容忍度或减少购买金额";
+  } else if (msg.includes("unauthorized caller")) {
+    analysis.type = "rewarder_config";
+    analysis.suggestion = "奖励金库未绑定当前 RevenueShare 合约，请管理员检查 Rewarder 的 revenueShareContract 配置";
+  } else if (msg.includes("奖励池授权不足")) {
+    analysis.type = "asset_allowance";
+    analysis.suggestion = "请管理员使用资产钱包，对 Rewarder 合约执行足额 approve 授权";
+  } else if (msg.includes("execution reverted")) {
+    analysis.type = "revert";
+    analysis.suggestion = "合约执行被回滚，请检查参数是否正确";
+  } else if (errorMessage.includes("internal json-rpc error")) {
+    analysis.type = "rpc_error";
+    analysis.suggestion = "可能的原因：\n1. 输入的 USDT 金额超过余额\n2. 合约地址配置错误\n3. 网络连接不稳定\n4. 合约已被暂停或出现故障\n\n请检查输入金额和合约配置";
+  } else if (msg.includes("erc20 call failed") || msg.includes("erc20")) {
+    analysis.type = "erc20_error";
+    analysis.suggestion = "USDT 合约调用失败，可能原因：\n1. USDT 合约地址配置错误\n2. 您没有足够的 USDT 余额\n3. USDT 授权额度不足\n4. 合约已被暂停\n\n请检查：\n- 合约配置中的 USDT 地址是否正确\n- 您的钱包中是否有足够的 USDT\n- 是否已点击'授权 USDT'按钮";
+  }
+
+  return analysis;
+}
+
+function getExplorerLink(hash, type = "tx") {
+  if (!hash || hash === "-") return "#";
+  return `${CONFIG.blockExplorer}/${type}/${hash}`;
+}
+
+function isFileProtocol() {
+  return window.location.protocol === "file:";
+}
+
+function getBaseUrl() {
+  if (isFileProtocol()) {
+    return window.location.href.split("?")[0].split("#")[0];
+  }
+  return window.location.origin + window.location.pathname;
+}
+
+// ============================================
+// 本地存储订单管理
+// ============================================
+
+function loadStoredOrders() {
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (error) {
+    console.error("加载订单失败:", error);
+    return [];
+  }
+}
+
+function saveStoredOrders(orders) {
+  try {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(orders));
+  } catch (error) {
+    console.error("保存订单失败:", error);
+    throw new Error("订单保存失败。浏览器本地存储空间不足或被禁用，请先处理后再继续。");
+  }
+}
+
+function createOrderNumber() {
+  const now = new Date();
+  const stamp = [
+    now.getFullYear(),
+    String(now.getMonth() + 1).padStart(2, "0"),
+    String(now.getDate()).padStart(2, "0"),
+    String(now.getHours()).padStart(2, "0"),
+    String(now.getMinutes()).padStart(2, "0"),
+    String(now.getSeconds()).padStart(2, "0")
+  ].join("");
+  const random = Math.floor(Math.random() * 9000 + 1000);
+  return "OD" + stamp + random;
+}
+
+function generateUUID() {
+  if (crypto.randomUUID) return crypto.randomUUID();
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, function(c) {
+    const r = Math.random() * 16 | 0;
+    const v = c === "x" ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+}
+
+function normalizePriceString(value, fallback = "0") {
+  const raw = String(value ?? "").trim();
+  if (!raw) return String(fallback);
+
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return String(fallback);
+  }
+
+  return raw;
+}
+
+function getProductSalePrice(product) {
+  return normalizePriceString(product?.price ?? product?.salePrice ?? "0");
+}
+
+function getProductOriginalPrice(product) {
+  const salePrice = getProductSalePrice(product);
+  return normalizePriceString(product?.originalPrice ?? salePrice, salePrice);
+}
+
+function getProductDiscountPercent(product) {
+  const salePrice = Number(getProductSalePrice(product));
+  const originalPrice = Number(getProductOriginalPrice(product));
+
+  if (!Number.isFinite(salePrice) || !Number.isFinite(originalPrice) || salePrice <= 0 || originalPrice <= salePrice) {
+    return 0;
+  }
+
+  return Math.round((1 - salePrice / originalPrice) * 100);
+}
+
+function getProductPriceSummary(product) {
+  const salePrice = getProductSalePrice(product);
+  const originalPrice = getProductOriginalPrice(product);
+  const discountPercent = getProductDiscountPercent(product);
+
+  return {
+    salePrice,
+    originalPrice,
+    discountPercent,
+    hasDiscount: discountPercent > 0
+  };
+}
+
+function normalizeProduct(raw, index = 0) {
+  const salePrice = getProductSalePrice(raw);
+  const originalPrice = getProductOriginalPrice({ ...raw, price: salePrice });
+
+  return {
+    id: raw?.id || generateUUID(),
+    sku: raw?.sku || "SKU-" + String(index + 1).padStart(3, "0"),
+    name: raw?.name || "未命名商品",
+    tag: raw?.tag || "商品",
+    price: salePrice,
+    originalPrice,
+    image: raw?.image || "🛍️",
+    description: raw?.description || "",
+    active: raw?.active !== false
+  };
+}
+
+function loadStoredProducts() {
+  try {
+    const raw = window.localStorage.getItem(PRODUCT_STORAGE_KEY);
+    if (!raw) {
+      window.localStorage.setItem(PRODUCT_STORAGE_KEY, JSON.stringify(DEFAULT_PRODUCTS));
+      return DEFAULT_PRODUCTS.map(normalizeProduct);
+    }
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed) || !parsed.length) {
+      window.localStorage.setItem(PRODUCT_STORAGE_KEY, JSON.stringify(DEFAULT_PRODUCTS));
+      return DEFAULT_PRODUCTS.map(normalizeProduct);
+    }
+    return parsed.map(normalizeProduct);
+  } catch (error) {
+    console.error("加载商品失败:", error);
+    return DEFAULT_PRODUCTS.map(normalizeProduct);
+  }
+}
+
+function saveStoredProducts(products) {
+  const normalized = products.map(normalizeProduct);
+  state.products = normalized;
+  window.localStorage.setItem(PRODUCT_STORAGE_KEY, JSON.stringify(normalized));
+}
+
+function getAllAdmins() {
+  const configAdmins = Array.isArray(CONFIG.adminWallets) ? CONFIG.adminWallets : [];
+  const normalized = configAdmins
+    .filter((addr) => ethers.isAddress(addr))
+    .map((addr) => ethers.getAddress(addr));
+
+  if (ethers.isAddress(state.adminAddress) && state.adminAddress !== ethers.ZeroAddress) {
+    normalized.unshift(ethers.getAddress(state.adminAddress));
+  }
+
+  return [...new Set(normalized)];
+}
+
+function renderAdminList() {
+  const listEl = document.getElementById("adminList");
+  const statusEl = document.getElementById("adminManageStatus");
+  if (!listEl) return;
+
+  const admins = getAllAdmins();
+
+  if (admins.length === 0) {
+    listEl.innerHTML = '<div class="muted">当前未配置额外管理员，只有合约 owner 拥有管理员权限。</div>';
+    if (statusEl) {
+      statusEl.textContent = "管理员权限来源：链上 owner + 前端配置白名单。";
+      statusEl.className = "status warn";
+    }
+    return;
+  }
+
+  listEl.innerHTML = admins.map((addr) => {
+    const isOwner = state.adminAddress !== ethers.ZeroAddress &&
+      addr.toLowerCase() === state.adminAddress.toLowerCase();
+    const isCurrentUser = state.account && addr.toLowerCase() === state.account.toLowerCase();
+    const label = isCurrentUser ? " (当前用户)" : "";
+    const source = isOwner
+      ? "<span style='color: var(--accent); font-size: 11px;'>[合约 Owner]</span>"
+      : "<span style='color: var(--accent-2); font-size: 11px;'>[配置白名单]</span>";
+
+    return `
+      <div class="admin-item" style="display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; background: rgba(255,255,255,0.03); border-radius: 10px; margin-bottom: 8px;">
+        <div style="display: flex; align-items: center; gap: 8px; overflow: hidden;">
+          <code style="font-size: 13px; overflow: hidden; text-overflow: ellipsis;">${shortAddress(addr)}${label}</code>
+          ${source}
+        </div>
+        <span style="font-size: 12px; color: var(--muted);">只读</span>
+      </div>
+    `;
+  }).join("");
+
+  if (statusEl) {
+    statusEl.textContent = "管理员权限来源：链上 owner + 前端配置白名单，不再允许浏览器本地手动添加。";
+    statusEl.className = "status ok";
+  }
+}
+
+function getActiveProducts() {
+  return state.products.filter((product) => product.active !== false);
+}
+
+function getSelectedProduct() {
+  return state.products.find((product) => product.id === state.selectedProductId) || null;
+}
+
+function fillAmountFromSelectedProduct() {
+  const product = getSelectedProduct();
+  if (!product) {
+    ui.amountInput.value = "";
+    ui.amountInput.readOnly = false;
+    return;
+  }
+  ui.amountInput.value = getProductSalePrice(product);
+  ui.amountInput.readOnly = true;
+}
+
+function updateSelectedProductSummary() {
+  const product = getSelectedProduct();
+  if (!product) {
+    ui.selectedProductName.textContent = "暂未选择商品";
+    ui.selectedProductTag.textContent = "未选择";
+    ui.selectedProductDesc.textContent = "请先在上方商品区选择一个商品，系统将自动填入价格。";
+    ui.selectedProductPrice.textContent = "-";
+    ui.selectedProductOriginalPrice.textContent = "-";
+    ui.selectedProductDiscount.textContent = "-";
+    ui.selectedProductSku.textContent = "-";
+    return;
+  }
+
+  const priceSummary = getProductPriceSummary(product);
+  ui.selectedProductName.textContent = product.name;
+  ui.selectedProductTag.textContent = product.tag || "商品";
+  ui.selectedProductDesc.textContent = product.description || "暂无商品说明。";
+  ui.selectedProductPrice.textContent = priceSummary.salePrice + " " + state.usdtSymbol;
+  ui.selectedProductOriginalPrice.textContent = priceSummary.hasDiscount
+    ? priceSummary.originalPrice + " " + state.usdtSymbol
+    : "无折扣";
+  ui.selectedProductDiscount.textContent = priceSummary.hasDiscount
+    ? "立省 " + priceSummary.discountPercent + "%"
+    : "标准价";
+  ui.selectedProductSku.textContent = product.sku || "-";
+}
+
+function setSelectedProduct(productId, shouldRefresh = true) {
+  const product = state.products.find((item) => item.id === productId && item.active !== false);
+  if (!product) return;
+  state.selectedProductId = product.id;
+  fillAmountFromSelectedProduct();
+  updateSelectedProductSummary();
+  renderProducts();
+  if (shouldRefresh) {
+    refreshPreview();
+  }
+}
+
+function collectCustomerInfo() {
+  return {
+    name: ui.customerNameInput.value.trim(),
+    phone: ui.customerPhoneInput.value.trim(),
+    address: ui.customerAddressInput.value.trim(),
+    note: ui.customerNoteInput.value.trim()
+  };
+}
+
+function validateCustomerInfo() {
+  const customer = collectCustomerInfo();
+  if (!customer.name) {
+    throw new Error("请输入客户姓名。");
+  }
+  if (!customer.phone) {
+    throw new Error("请输入电话号码。");
+  }
+  if (!customer.address) {
+    throw new Error("请输入联系地址。");
+  }
+  return customer;
+}
+
+function upsertOrder(order) {
+  const orders = loadStoredOrders();
+  const index = orders.findIndex((item) => item.id === order.id);
+  if (index >= 0) {
+    orders[index] = order;
+  } else {
+    orders.unshift(order);
+  }
+  saveStoredOrders(orders);
+  renderOrders();
+}
+
+function updateOrder(orderId, updates) {
+  const orders = loadStoredOrders();
+  const index = orders.findIndex((item) => item.id === orderId);
+  if (index === -1) return;
+  orders[index] = { ...orders[index], ...updates };
+  saveStoredOrders(orders);
+  renderOrders();
+}
+
+function getVisibleOrders() {
+  const search = ui.orderSearchInput.value.trim().toLowerCase();
+  const status = ui.orderStatusFilter.value;
+  const orders = loadStoredOrders();
+
+  return orders.filter((order) => {
+    const matchAdmin = state.isAdmin || (state.account && order.wallet?.toLowerCase() === state.account.toLowerCase());
+    if (!matchAdmin) return false;
+    if (status !== "all" && order.status !== status) return false;
+    if (!search) return true;
+
+    const haystack = [
+      order.orderNo,
+      order.productName,
+      order.productSku,
+      order.wallet,
+      order.name,
+      order.phone,
+      order.address,
+      order.note,
+      order.txHash
+    ].join(" ").toLowerCase();
+
+    return haystack.includes(search);
+  });
+}
+
+function getStatusBadge(status) {
+  const safe = status || "pending";
+  const labelMap = {
+    pending: "待处理",
+    confirmed: "已确认",
+    failed: "失败"
+  };
+  return '<span class="badge ' + safe + '">' + (labelMap[safe] || safe) + "</span>";
+}
+
+function renderOrders() {
+  const visibleOrders = getVisibleOrders();
+  const confirmedCount = visibleOrders.filter((item) => item.status === "confirmed").length;
+  const visibleTotal = visibleOrders.reduce((sum, item) => {
+    try {
+      return sum + BigInt(item.usdtAmount || "0");
+    } catch {
+      return sum;
+    }
+  }, 0n);
+
+  ui.ordersVisibleCount.textContent = String(visibleOrders.length);
+  ui.ordersConfirmedCount.textContent = String(confirmedCount);
+  ui.ordersUsdtTotal.textContent = formatUnits(visibleTotal, state.usdtDecimals) + " " + state.usdtSymbol;
+  ui.adminStatus.textContent = state.isAdmin ? "是" : "否";
+
+  if (visibleOrders.length) {
+    setOrderStatus(`已加载 ${visibleOrders.length} 个订单。`, "ok");
+  } else {
+    setOrderStatus("本地存储中没有匹配的订单。", "");
+  }
+
+  if (!visibleOrders.length) {
+    ui.ordersTableBody.innerHTML = '<tr><td colspan="7" class="muted">暂无订单。</td></tr>';
+    return;
+  }
+
+  ui.ordersTableBody.innerHTML = visibleOrders.map((order) => {
+    const amountText = formatUnits(BigInt(order.usdtAmount || "0"), state.usdtDecimals) + " " + state.usdtSymbol;
+    const rewardText = formatUnits(BigInt(order.assetAmount || "0"), state.assetDecimals) + " " + state.assetSymbol;
+    const txLink = getExplorerLink(order.txHash);
+    const orderPriceNote = order.productOriginalPrice && order.productOriginalPrice !== order.productPrice
+      ? `原价: ${order.productOriginalPrice} ${state.usdtSymbol} / 折后: ${order.productPrice} ${state.usdtSymbol}`
+      : `成交价: ${order.productPrice || "-"} ${state.usdtSymbol}`;
+
+    const statusCell = state.isAdmin
+      ? '<select data-order-status="' + escapeHtml(order.id) + '">' +
+          ['pending', 'confirmed', 'failed'].map((s) =>
+            '<option value="' + s + '"' + (order.status === s ? " selected" : "") + ">" +
+            (s === "pending" ? "待处理" : s === "confirmed" ? "已确认" : "失败") +
+            "</option>"
+          ).join("") +
+        "</select>"
+      : getStatusBadge(order.status);
+
+    return (
+      "<tr>" +
+        "<td><strong>" + escapeHtml(order.orderNo) + "</strong><small>" + escapeHtml(formatDateTime(order.createdAt)) + "<br>商品: " + escapeHtml(order.productName || "-") + "<br>" + escapeHtml(orderPriceNote) + "</small></td>" +
+        "<td><strong>" + escapeHtml(order.name) + "</strong><small>" + escapeHtml(order.phone) + "<br>" + escapeHtml(order.address) + (order.note ? "<br>备注: " + escapeHtml(order.note) : "") + "</small></td>" +
+        "<td><code>" + escapeHtml(shortAddress(order.wallet)) + "</code><small>推荐人: " + escapeHtml(shortAddress(order.referrer)) + "</small></td>" +
+        "<td><strong>" + escapeHtml(amountText) + "</strong><small>奖励池: " + escapeHtml(formatUnits(BigInt(order.rewardPoolAmount || "0"), state.usdtDecimals)) + " " + escapeHtml(state.usdtSymbol) + "</small></td>" +
+        "<td><strong>" + escapeHtml(rewardText) + "</strong><small>最低: " + escapeHtml(formatUnits(BigInt(order.minAssetAmount || "0"), state.assetDecimals)) + " " + escapeHtml(state.assetSymbol) + "</small></td>" +
+        "<td>" + statusCell + "</td>" +
+        "<td><a href='" + txLink + "' target='_blank' class='tx-link'><code>" + escapeHtml(shortAddress(order.txHash)) + "</code></a><small>" + escapeHtml(order.txHash ? order.txHash.slice(0, 20) + "..." : "-") + "</small></td>" +
+      "</tr>"
+    );
+  }).join("");
+
+  // 绑定状态选择器事件
+  if (state.isAdmin) {
+    ui.ordersTableBody.querySelectorAll("[data-order-status]").forEach((element) => {
+      element.addEventListener("change", (event) => {
+        const orderId = event.target.getAttribute("data-order-status");
+        updateOrder(orderId, {
+          status: event.target.value,
+          updatedAt: new Date().toISOString()
+        });
+      });
+    });
+  }
+}
+
+function exportOrders(format = "csv", scope = "visible") {
+  if (scope === "all" && !state.isAdmin) {
+    setOrderStatus("只有管理员可以导出全部订单。", "error");
+    return;
+  }
+
+  const orders = scope === "all" ? loadStoredOrders() : getVisibleOrders();
+  if (!orders.length) {
+    setOrderStatus("没有可导出的订单。", "warn");
+    return;
+  }
+
+  const timestamp = new Date().toISOString().slice(0, 10);
+
+  if (format === "json") {
+    // 导出 JSON
+    const blob = new Blob([JSON.stringify(orders, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = (scope === "all" ? "asset-mall-all-orders-" : "asset-mall-orders-") + timestamp + ".json";
+    anchor.click();
+    URL.revokeObjectURL(url);
+    setOrderStatus(scope === "all" ? "全部订单 JSON 导出成功。" : "当前可见订单 JSON 导出成功。", "ok");
+  } else {
+    // 导出 CSV (Excel 兼容)
+    const headers = [
+      "订单号",
+      "创建时间",
+      "更新时间",
+      "状态",
+      "商品名称",
+      "商品SKU",
+      "商品原价",
+      "商品折后价",
+      "折扣比例",
+      "钱包地址",
+      "姓名",
+      "电话",
+      "地址",
+      "备注",
+      "推荐人",
+      "USDT金额",
+      "奖励池金额",
+      "资产奖励",
+      "最低奖励",
+      "交易哈希"
+    ];
+
+    const rows = orders.map(order => {
+      const statusMap = {
+        pending: "待处理",
+        confirmed: "已确认",
+        failed: "失败"
+      };
+
+      return [
+        order.orderNo || "",
+        order.createdAt ? new Date(order.createdAt).toLocaleString("zh-CN") : "",
+        order.updatedAt ? new Date(order.updatedAt).toLocaleString("zh-CN") : "",
+        statusMap[order.status] || order.status || "",
+        order.productName || "",
+        order.productSku || "",
+        order.productOriginalPrice || "",
+        order.productPrice || order.productSalePrice || "",
+        order.productDiscountPercent ? order.productDiscountPercent + "%" : "",
+        order.wallet || "",
+        order.name || "",
+        order.phone || "",
+        order.address || "",
+        order.note || "",
+        order.referrer || "",
+        formatUnits(order.usdtAmount, state.usdtDecimals, 6),
+        formatUnits(order.rewardPoolAmount, state.usdtDecimals, 6),
+        formatUnits(order.assetAmount, state.assetDecimals, 6),
+        formatUnits(order.minAssetAmount, state.assetDecimals, 6),
+        order.txHash || ""
+      ];
+    });
+
+    // 添加 BOM 以支持中文
+    const BOM = "\uFEFF";
+
+    // CSV 内容
+    const csvContent = BOM + [
+      headers.join(","),
+      ...rows.map(row =>
+        row.map(cell => {
+          // 处理包含逗号或引号的单元格
+          const cellStr = String(cell || "");
+          if (cellStr.includes(",") || cellStr.includes('"') || cellStr.includes("\n")) {
+            return '"' + cellStr.replace(/"/g, '""') + '"';
+          }
+          return cellStr;
+        }).join(",")
+      )
+    ].join("\n");
+
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = (scope === "all" ? "asset-mall-all-orders-" : "asset-mall-orders-") + timestamp + ".csv";
+    anchor.click();
+    URL.revokeObjectURL(url);
+    setOrderStatus(scope === "all" ? "全部订单 CSV 导出成功（可用 Excel 打开）。" : "当前可见订单 CSV 导出成功（可用 Excel 打开）。", "ok");
+  }
+}
+
+function renderProducts() {
+  if (!ui.productGrid) return;
+
+  const activeProducts = getActiveProducts();
+  if (!activeProducts.length) {
+    ui.productGrid.innerHTML = '<div class="muted">暂无可售商品，请管理员先创建商品。</div>';
+    state.selectedProductId = null;
+    fillAmountFromSelectedProduct();
+    updateSelectedProductSummary();
+    return;
+  }
+
+  if (!state.selectedProductId || !activeProducts.some((product) => product.id === state.selectedProductId)) {
+    state.selectedProductId = activeProducts[0].id;
+  }
+
+  ui.productGrid.innerHTML = activeProducts.map((product) => {
+    const imageHtml = /^https?:\/\//i.test(product.image)
+      ? '<img src="' + escapeHtml(product.image) + '" alt="' + escapeHtml(product.name) + '">'
+      : escapeHtml(product.image || "🛍️");
+    const priceSummary = getProductPriceSummary(product);
+    const priceBlock = priceSummary.hasDiscount
+      ? '<div class="product-price"><span>折后价</span><strong>' + escapeHtml(priceSummary.salePrice) + ' ' + escapeHtml(state.usdtSymbol) + '</strong><small class="product-price-original">原价 ' + escapeHtml(priceSummary.originalPrice) + ' ' + escapeHtml(state.usdtSymbol) + '</small></div>'
+      : '<div class="product-price"><span>售价</span><strong>' + escapeHtml(priceSummary.salePrice) + ' ' + escapeHtml(state.usdtSymbol) + '</strong></div>';
+    const discountBadge = priceSummary.hasDiscount
+      ? '<span class="discount-pill">限时 ' + escapeHtml(String(priceSummary.discountPercent)) + '% OFF</span>'
+      : "";
+
+    return (
+      '<article class="product-card' + (product.id === state.selectedProductId ? ' active' : '') + '">' +
+        '<div class="product-cover">' + imageHtml + '</div>' +
+        '<div class="product-tag-row"><span class="product-tag">' + escapeHtml(product.tag || "商品") + '</span>' + discountBadge + '</div>' +
+        '<h3>' + escapeHtml(product.name) + '</h3>' +
+        '<p>' + escapeHtml(product.description || "暂无商品说明。") + '</p>' +
+        '<div class="product-meta">' +
+          priceBlock +
+          '<button class="' + (product.id === state.selectedProductId ? 'primary' : 'ghost') + ' product-select-btn" data-select-product="' + escapeHtml(product.id) + '">' +
+            (product.id === state.selectedProductId ? "已选择" : "选择商品") +
+          '</button>' +
+        '</div>' +
+      '</article>'
+    );
+  }).join("");
+
+  ui.productGrid.querySelectorAll("[data-select-product]").forEach((button) => {
+    button.addEventListener("click", () => {
+      setSelectedProduct(button.getAttribute("data-select-product"));
+      const current = getSelectedProduct();
+      setStatus(current ? "已选择商品: " + current.name : "商品已切换。", "ok");
+    });
+  });
+
+  fillAmountFromSelectedProduct();
+  updateSelectedProductSummary();
+}
+
+function resetProductForm() {
+  state.editingProductId = null;
+  if (!ui.productNameInput) return;
+  ui.productNameInput.value = "";
+  ui.productOriginalPriceInput.value = "";
+  ui.productPriceInput.value = "";
+  ui.productTagInput.value = "";
+  ui.productImageInput.value = "";
+  ui.productDescriptionInput.value = "";
+  ui.saveProductBtn.textContent = "保存商品";
+}
+
+function collectProductForm() {
+  return {
+    name: ui.productNameInput.value.trim(),
+    originalPrice: ui.productOriginalPriceInput.value.trim(),
+    price: ui.productPriceInput.value.trim(),
+    tag: ui.productTagInput.value.trim(),
+    image: ui.productImageInput.value.trim() || "🛍️",
+    description: ui.productDescriptionInput.value.trim()
+  };
+}
+
+function validateProductForm() {
+  const form = collectProductForm();
+  if (!state.isAdmin) {
+    throw new Error("只有管理员可以管理商品。");
+  }
+  if (!form.name) {
+    throw new Error("请输入商品名称。");
+  }
+  if (!form.price || Number(form.price) <= 0) {
+    throw new Error("请输入有效的折后价。");
+  }
+  form.originalPrice = form.originalPrice || form.price;
+  if (Number(form.originalPrice) <= 0) {
+    throw new Error("请输入有效的原价。");
+  }
+  if (Number(form.originalPrice) < Number(form.price)) {
+    throw new Error("原价不能低于折后价。");
+  }
+  return form;
+}
+
+function renderAdminProducts() {
+  if (!ui.adminProductsSection || !ui.productAdminList) return;
+
+  if (!state.isAdmin) {
+    ui.adminProductsSection.classList.add("hidden");
+    ui.exportAllCsvBtn.classList.add("hidden");
+    ui.exportAllJsonBtn.classList.add("hidden");
+    return;
+  }
+
+  ui.adminProductsSection.classList.remove("hidden");
+  ui.exportAllCsvBtn.classList.remove("hidden");
+  ui.exportAllJsonBtn.classList.remove("hidden");
+
+  // 渲染管理员列表
+  renderAdminList();
+
+  if (!state.products.length) {
+    ui.productAdminList.innerHTML = '<div class="muted">暂无商品，请先新增商品。</div>';
+    return;
+  }
+
+  ui.productAdminList.innerHTML = state.products.map((product) => (
+    '<div class="product-admin-item">' +
+      '<div>' +
+        '<div class="product-tag-row"><span class="product-tag">' + escapeHtml(product.tag || "商品") + (product.active === false ? " / 已下架" : "") + '</span>' + (getProductDiscountPercent(product) > 0 ? '<span class="discount-pill">折扣 ' + escapeHtml(String(getProductDiscountPercent(product))) + '%</span>' : '') + '</div>' +
+        '<h3>' + escapeHtml(product.name) + '</h3>' +
+        '<p>SKU: ' + escapeHtml(product.sku) + '<br>原价: ' + escapeHtml(getProductOriginalPrice(product)) + ' ' + escapeHtml(state.usdtSymbol) + '<br>折后价: ' + escapeHtml(getProductSalePrice(product)) + ' ' + escapeHtml(state.usdtSymbol) + '<br>' + escapeHtml(product.description || "暂无商品说明。") + '</p>' +
+      '</div>' +
+      '<div class="product-admin-actions">' +
+        '<button class="ghost" data-edit-product="' + escapeHtml(product.id) + '">编辑</button>' +
+        '<button class="ghost" data-select-admin-product="' + escapeHtml(product.id) + '">设为当前</button>' +
+        '<button class="ghost" data-toggle-product="' + escapeHtml(product.id) + '">' + (product.active === false ? "上架" : "下架") + '</button>' +
+        '<button class="ghost" data-delete-product="' + escapeHtml(product.id) + '">删除</button>' +
+      '</div>' +
+    '</div>'
+  )).join("");
+
+  ui.productAdminList.querySelectorAll("[data-edit-product]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const product = state.products.find((item) => item.id === button.getAttribute("data-edit-product"));
+      if (!product) return;
+      state.editingProductId = product.id;
+      ui.productNameInput.value = product.name;
+      ui.productOriginalPriceInput.value = getProductOriginalPrice(product);
+      ui.productPriceInput.value = product.price;
+      ui.productTagInput.value = product.tag || "";
+      ui.productImageInput.value = product.image || "";
+      ui.productDescriptionInput.value = product.description || "";
+      ui.saveProductBtn.textContent = "更新商品";
+      ui.productStatusBox.textContent = "正在编辑商品: " + product.name;
+      ui.productStatusBox.className = "status ok";
+    });
+  });
+
+  ui.productAdminList.querySelectorAll("[data-select-admin-product]").forEach((button) => {
+    button.addEventListener("click", () => {
+      setSelectedProduct(button.getAttribute("data-select-admin-product"));
+    });
+  });
+
+  ui.productAdminList.querySelectorAll("[data-toggle-product]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const productId = button.getAttribute("data-toggle-product");
+      state.products = state.products.map((product) =>
+        product.id === productId ? { ...product, active: product.active === false } : product
+      );
+      saveStoredProducts(state.products);
+      renderProducts();
+      renderAdminProducts();
+      ui.productStatusBox.textContent = "商品状态已更新。";
+      ui.productStatusBox.className = "status ok";
+    });
+  });
+
+  ui.productAdminList.querySelectorAll("[data-delete-product]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const productId = button.getAttribute("data-delete-product");
+      const product = state.products.find((item) => item.id === productId);
+      if (!product) return;
+      if (!confirm("确定删除商品「" + product.name + "」吗？")) return;
+      state.products = state.products.filter((item) => item.id !== productId);
+      saveStoredProducts(state.products);
+      if (state.selectedProductId === productId) {
+        const firstActive = getActiveProducts()[0];
+        state.selectedProductId = firstActive ? firstActive.id : null;
+      }
+      renderProducts();
+      renderAdminProducts();
+      resetProductForm();
+      ui.productStatusBox.textContent = "商品已删除。";
+      ui.productStatusBox.className = "status ok";
+    });
+  });
+}
+
+function saveProductFromForm() {
+  try {
+    const form = validateProductForm();
+    if (state.editingProductId) {
+      state.products = state.products.map((product) =>
+        product.id === state.editingProductId ? { ...product, ...form } : product
+      );
+      ui.productStatusBox.textContent = "商品已更新。";
+    } else {
+      state.products.unshift(normalizeProduct({
+        id: generateUUID(),
+        sku: "SKU-" + Date.now(),
+        ...form,
+        active: true
+      }, state.products.length));
+      ui.productStatusBox.textContent = "商品已新增。";
+    }
+
+    saveStoredProducts(state.products);
+    if (!state.selectedProductId) {
+      state.selectedProductId = getActiveProducts()[0]?.id || null;
+    }
+    ui.productStatusBox.className = "status ok";
+    renderProducts();
+    renderAdminProducts();
+    resetProductForm();
+  } catch (error) {
+    ui.productStatusBox.textContent = extractError(error);
+    ui.productStatusBox.className = "status error";
+  }
+}
+
+// ============================================
+// 区块链交互
+// ============================================
+
+function getInjectedProviders() {
+  const ethereum = window.ethereum;
+  if (!ethereum) return [];
+  if (Array.isArray(ethereum.providers) && ethereum.providers.length) {
+    return ethereum.providers;
+  }
+  return [ethereum];
+}
+
+function resolveProvider(walletType = "injected") {
+  const providers = getInjectedProviders();
+  if (!providers.length) return null;
+
+  const config = WALLET_CONFIG[walletType] || WALLET_CONFIG.injected;
+  const matchedProvider = providers.find((provider) => config.match(provider));
+  return matchedProvider || (walletType === "injected" ? providers[0] : null);
+}
+
+function markWalletAvailability() {
+  const providers = getInjectedProviders();
+  const hasInjected = providers.length > 0;
+
+  document.querySelectorAll(".wallet-option").forEach((option) => {
+    const walletType = option.getAttribute("data-wallet");
+    if (walletType === "walletconnect") {
+      option.classList.add("disabled");
+      option.setAttribute("data-status", "暂未接入");
+      return;
+    }
+
+    const available = !!resolveProvider(walletType);
+    option.classList.toggle("available", available);
+    option.classList.toggle("disabled", !available && hasInjected && walletType !== "injected");
+    option.setAttribute("data-status", available ? "已检测" : (walletType === "injected" && hasInjected ? "可连接" : "未安装"));
+  });
+}
+
+function updateWalletButtonState() {
+  if (!ui.connectBtn) return;
+  ui.connectBtn.textContent = state.account ? `已连接 ${shortAddress(state.account)}` : "连接钱包";
+}
+
+async function loadContracts() {
+  // 初始化 provider
+  state.provider = new ethers.JsonRpcProvider(CONFIG.rpcUrl, CONFIG.chainId);
+
+  // 初始化合约
+  state.revenueShare = new ethers.Contract(CONFIG.revenueShare, REVENUE_SHARE_ABI, state.provider);
+  state.rewarder = new ethers.Contract(CONFIG.rewarder, REWARDER_ABI, state.provider);
+
+  // 获取代币地址
+  state.usdtAddress = await state.revenueShare.usdt();
+  state.assetAddress = await state.rewarder.assetToken();
+
+  console.log("合约配置信息:");
+  console.log("- RevenueShare 地址:", CONFIG.revenueShare);
+  console.log("- Rewarder 地址:", CONFIG.rewarder);
+  console.log("- Oracle 地址:", CONFIG.oracle);
+  console.log("- USDT 地址 (从合约获取):", state.usdtAddress);
+  console.log("- Asset 地址 (从合约获取):", state.assetAddress);
+
+  // 检查 USDT 地址是否是 BSC 主网的 USDT
+  const BSC_USDT = "0x55d398326f99059fF775485246999027B3197955";
+  if (state.usdtAddress.toLowerCase() !== BSC_USDT.toLowerCase()) {
+    console.warn("警告: 检测到的 USDT 地址与 BSC 主网 USDT 地址不匹配!");
+    console.warn("- 检测到的地址:", state.usdtAddress);
+    console.warn("- BSC 主网 USDT:", BSC_USDT);
+  }
+
+  // 初始化代币合约
+  state.usdt = new ethers.Contract(state.usdtAddress, ERC20_ABI, state.provider);
+  state.asset = new ethers.Contract(state.assetAddress, ERC20_ABI, state.provider);
+
+  // 获取合约信息
+  const [
+    adminAddress,
+    usdtSymbol,
+    usdtDecimals,
+    assetSymbol,
+    assetDecimals,
+    productCostBps,
+    rewardBps,
+    revenueShareRewarder,
+    assetSourceWallet,
+    rewarderRevenueShare,
+    rewarderOracle,
+    feeWallet,
+    productCostWallet,
+    rewardWallet,
+    defaultDirectWallet,
+    defaultIndirectWallet
+  ] = await Promise.all([
+    state.revenueShare.owner().catch(() => ethers.ZeroAddress),
+    state.usdt.symbol().catch(() => "USDT"),
+    state.usdt.decimals().catch(() => 18),
+    state.asset.symbol().catch(() => "ASSET"),
+    state.asset.decimals().catch(() => 18),
+    state.revenueShare.productCostBps().catch(() => 0n),
+    state.revenueShare.rewardBps().catch(() => 0n),
+    state.revenueShare.assetARewarder().catch(() => ethers.ZeroAddress),
+    state.rewarder.assetSourceWallet().catch(() => ethers.ZeroAddress),
+    state.rewarder.revenueShareContract().catch(() => ethers.ZeroAddress),
+    state.rewarder.assetOracle().catch(() => ethers.ZeroAddress),
+    state.revenueShare.feeWallet().catch(() => ethers.ZeroAddress),
+    state.revenueShare.productCostWallet().catch(() => ethers.ZeroAddress),
+    state.revenueShare.rewardWallet().catch(() => ethers.ZeroAddress),
+    state.revenueShare.defaultDirectWallet().catch(() => ethers.ZeroAddress),
+    state.revenueShare.defaultIndirectWallet().catch(() => ethers.ZeroAddress)
+  ]);
+
+  console.log("合约钱包配置:");
+  console.log("- feeWallet:", feeWallet);
+  console.log("- productCostWallet:", productCostWallet);
+  console.log("- rewardWallet:", rewardWallet);
+  console.log("- defaultDirectWallet:", defaultDirectWallet);
+  console.log("- defaultIndirectWallet:", defaultIndirectWallet);
+  console.log("- assetSourceWallet:", assetSourceWallet);
+
+  state.adminAddress = adminAddress;
+  state.usdtSymbol = usdtSymbol;
+  state.usdtDecimals = Number(usdtDecimals);
+  state.assetSymbol = assetSymbol;
+  state.assetDecimals = Number(assetDecimals);
+  state.productCostBps = productCostBps;
+  state.rewardBps = rewardBps;
+  state.products = loadStoredProducts();
+  if (!state.selectedProductId) {
+    state.selectedProductId = getActiveProducts()[0]?.id || null;
+  }
+
+  // 更新 UI
+  ui.revenueShareAddress.textContent = CONFIG.revenueShare;
+  ui.rewarderAddress.textContent = CONFIG.rewarder;
+  ui.oracleAddress.textContent = CONFIG.oracle;
+  ui.usdtTokenAddress.textContent = state.usdtAddress;
+  ui.assetTokenAddress.textContent = state.assetAddress;
+  ui.revenueShareRewarder.textContent = revenueShareRewarder;
+  ui.assetSourceWallet.textContent = assetSourceWallet;
+  ui.rewarderRevenueShare.textContent = rewarderRevenueShare;
+  ui.rewarderOracle.textContent = rewarderOracle;
+  ui.productCostBps.textContent = formatPercentFromBps(productCostBps);
+  ui.rewardBps.textContent = formatPercentFromBps(rewardBps);
+
+  if (ui.revenueShareRewarder) {
+    ui.revenueShareRewarder.style.color =
+      revenueShareRewarder.toLowerCase() === CONFIG.rewarder.toLowerCase() ? "" : "#ff6f91";
+  }
+  if (ui.rewarderRevenueShare) {
+    ui.rewarderRevenueShare.style.color =
+      rewarderRevenueShare.toLowerCase() === CONFIG.revenueShare.toLowerCase() ? "" : "#ff6f91";
+  }
+  if (ui.rewarderOracle) {
+    ui.rewarderOracle.style.color =
+      rewarderOracle.toLowerCase() === CONFIG.oracle.toLowerCase() ? "" : "#ff6f91";
+  }
+
+  // 显示默认钱包地址
+  const defaultDirectWalletEl = document.getElementById("defaultDirectWallet");
+  const defaultIndirectWalletEl = document.getElementById("defaultIndirectWallet");
+  if (defaultDirectWalletEl) defaultDirectWalletEl.textContent = defaultDirectWallet;
+  if (defaultIndirectWalletEl) defaultIndirectWalletEl.textContent = defaultIndirectWallet;
+  if (defaultDirectWalletEl) defaultDirectWalletEl.style.color = "";
+  if (defaultIndirectWalletEl) defaultIndirectWalletEl.style.color = "";
+
+  // 检查默认钱包是否为零地址
+  if (defaultDirectWallet === ethers.ZeroAddress) {
+    console.error("错误: defaultDirectWallet 为零地址!");
+    if (defaultDirectWalletEl) defaultDirectWalletEl.style.color = "#ff6f91";
+  }
+  if (defaultIndirectWallet === ethers.ZeroAddress) {
+    console.error("错误: defaultIndirectWallet 为零地址!");
+    if (defaultIndirectWalletEl) defaultIndirectWalletEl.style.color = "#ff6f91";
+  }
+
+  // 获取并显示奖励池余额和授权
+  try {
+    const assetBalance = await state.asset.balanceOf(assetSourceWallet);
+    const assetSourceBalanceEl = document.getElementById("assetSourceBalance");
+    if (assetSourceBalanceEl) {
+      assetSourceBalanceEl.textContent = formatUnits(assetBalance, state.assetDecimals) + " " + state.assetSymbol;
+    }
+
+    // 检查奖励池对 Rewarder 合约的授权
+    const assetAllowance = await state.asset.allowance(assetSourceWallet, CONFIG.rewarder);
+    const assetSourceAllowanceEl = document.getElementById("assetSourceAllowance");
+    if (assetSourceAllowanceEl) {
+      assetSourceAllowanceEl.textContent = formatUnits(assetAllowance, state.assetDecimals) + " " + state.assetSymbol;
+    }
+
+    console.log("奖励池信息:");
+    console.log("- AssetSourceWallet:", assetSourceWallet);
+    console.log("- 余额:", formatUnits(assetBalance, state.assetDecimals), state.assetSymbol);
+    console.log("- 对 Rewarder 合约授权:", formatUnits(assetAllowance, state.assetDecimals), state.assetSymbol);
+
+    // 如果授权为0，显示警告
+    if (assetAllowance === 0n) {
+      console.warn("警告: 奖励池未授权 Rewarder 合约使用 AssetToken!");
+      if (assetSourceAllowanceEl) {
+        assetSourceAllowanceEl.textContent += " (未授权!)";
+        assetSourceAllowanceEl.style.color = "#ff6f91";
+      }
+    }
+  } catch (e) {
+    console.warn("无法获取奖励池信息:", e);
+    const assetSourceBalanceEl = document.getElementById("assetSourceBalance");
+    const assetSourceAllowanceEl = document.getElementById("assetSourceAllowance");
+    if (assetSourceBalanceEl) assetSourceBalanceEl.textContent = "无法读取";
+    if (assetSourceAllowanceEl) assetSourceAllowanceEl.textContent = "无法读取";
+  }
+
+  renderProducts();
+  renderAdminProducts();
+  renderOrders();
+}
+
+// 显示钱包选择模态框
+function showWalletModal() {
+  if (ui.walletModal) {
+    markWalletAvailability();
+    ui.walletModal.classList.add("active");
+  }
+}
+
+// 隐藏钱包选择模态框
+function hideWalletModal() {
+  if (ui.walletModal) {
+    ui.walletModal.classList.remove("active");
+  }
+}
+
+// 使用指定钱包连接
+async function connectWithWallet(walletType) {
+  hideWalletModal();
+
+  if (walletType === "walletconnect") {
+    setStatus("WalletConnect 需要额外集成。请使用浏览器插件钱包。", "warn");
+    return;
+  }
+
+  const provider = resolveProvider(walletType);
+
+  if (!provider) {
+    const name = WALLET_CONFIG[walletType]?.name || "该钱包";
+    setStatus(`未检测到 ${name}。请确保已安装钱包插件。`, "error");
+
+    // 打开下载页面
+    const downloadUrls = {
+      metamask: "https://metamask.io/download/",
+      trust: "https://trustwallet.com/browser-extension",
+      tokenpocket: "https://www.tokenpocket.pro/",
+      math: "https://mathwallet.org/",
+      binance: "https://www.bnbchain.org/en/binance-wallet",
+      okx: "https://www.okx.com/web3"
+    };
+    if (downloadUrls[walletType]) {
+      setTimeout(() => {
+        if (confirm(`是否打开 ${name} 下载页面？`)) {
+          window.open(downloadUrls[walletType], "_blank");
+        }
+      }, 100);
+    }
+    return;
+  }
+
+  try {
+    // 设置当前使用的 provider
+    window.currentProvider = provider;
+    state.lastWalletType = walletType;
+
+    state.browserProvider = new ethers.BrowserProvider(provider, "any");
+    await state.browserProvider.send("eth_requestAccounts", []);
+    state.signer = await state.browserProvider.getSigner();
+    const network = await state.browserProvider.getNetwork();
+
+    state.account = await state.signer.getAddress();
+    state.chainId = Number(network.chainId);
+
+    // 检查是否为管理员
+    const isContractOwner = state.adminAddress !== ethers.ZeroAddress &&
+                            state.account.toLowerCase() === state.adminAddress.toLowerCase();
+    const allAdmins = getAllAdmins();
+    const isConfiguredAdmin = allAdmins.some(
+      addr => addr.toLowerCase() === state.account.toLowerCase()
+    );
+    state.isAdmin = isContractOwner || isConfiguredAdmin;
+
+    ui.walletAddress.textContent = shortAddress(state.account);
+    ui.networkName.textContent = state.chainId === CONFIG.chainId ? CONFIG.chainName : "Chain ID " + state.chainId;
+    updateWalletButtonState();
+
+    // 获取绑定的推荐人
+    state.boundReferrer = await state.revenueShare.referrerOf(state.account);
+    ui.boundReferrer.textContent = state.boundReferrer === ethers.ZeroAddress ? "-" : shortAddress(state.boundReferrer);
+
+    await refreshWalletMetrics();
+    await refreshPreview();
+    renderAdminProducts();
+    await reconcileOrders();
+    bindWalletProviderEvents(provider);
+    renderOrders();
+
+    const name = WALLET_CONFIG[walletType]?.name || "钱包";
+    setStatus(`${name} 连接成功。`, "ok");
+  } catch (error) {
+    console.error(error);
+    setStatus("连接钱包失败: " + extractError(error), "error");
+  }
+}
+
+// 保持向后兼容的通用连接函数
+async function connectWallet() {
+  const providers = getInjectedProviders();
+  if (!providers.length) {
+    if (isFileProtocol()) {
+      setStatus("未检测到钱包。你当前可能是直接用 file:// 打开的页面，请改用本地 HTTP 服务，或在钱包扩展里开启“允许访问文件网址”。", "error");
+    } else {
+      setStatus("未检测到浏览器钱包。请先安装 MetaMask、OKX Wallet、Trust Wallet 等插件。", "error");
+    }
+    return;
+  }
+
+  if (providers.length === 1) {
+    await connectWithWallet("injected");
+    return;
+  }
+
+  showWalletModal();
+}
+
+async function switchToBsc() {
+  const provider = window.currentProvider || window.ethereum;
+  if (!provider) {
+    setStatus("需要钱包才能切换网络。", "error");
+    return;
+  }
+
+  try {
+    await provider.request({
+      method: "wallet_switchEthereumChain",
+      params: [{ chainId: CONFIG.chainIdHex }]
+    });
+    setStatus("已请求切换到 BSC 网络。", "ok");
+  } catch (error) {
+    if (error.code === 4902) {
+      try {
+        await provider.request({
+          method: "wallet_addEthereumChain",
+          params: [{
+            chainId: CONFIG.chainIdHex,
+            chainName: CONFIG.chainName,
+            nativeCurrency: { name: "BNB", symbol: "BNB", decimals: 18 },
+            rpcUrls: [CONFIG.rpcUrl],
+            blockExplorerUrls: [CONFIG.blockExplorer]
+          }]
+        });
+        setStatus("已请求添加 BSC 网络。", "ok");
+      } catch (addError) {
+        setStatus("添加网络失败: " + extractError(addError), "error");
+      }
+    } else {
+      setStatus("切换网络失败: " + extractError(error), "error");
+    }
+  }
+}
+
+async function refreshWalletMetrics() {
+  if (!state.account) {
+    ui.usdtBalance.textContent = "-";
+    ui.usdtAllowance.textContent = "-";
+    return;
+  }
+
+  try {
+    const [balance, allowance] = await Promise.all([
+      state.usdt.balanceOf(state.account),
+      state.usdt.allowance(state.account, CONFIG.revenueShare)
+    ]);
+
+    ui.usdtBalance.textContent = formatUnits(balance, state.usdtDecimals) + " " + state.usdtSymbol;
+    ui.usdtAllowance.textContent = formatUnits(allowance, state.usdtDecimals) + " " + state.usdtSymbol;
+  } catch (error) {
+    console.error("刷新钱包指标失败:", error);
+  }
+}
+
+function getQueryReferrer() {
+  const params = new URLSearchParams(window.location.search);
+  const ref = params.get("ref");
+  return ref && ethers.isAddress(ref) ? ethers.getAddress(ref) : "";
+}
+
+function getActiveReferrer() {
+  const inputRef = ui.referrerInput.value.trim();
+  if (state.boundReferrer && state.boundReferrer !== ethers.ZeroAddress) {
+    return state.boundReferrer;
+  }
+  if (inputRef && ethers.isAddress(inputRef)) {
+    return ethers.getAddress(inputRef);
+  }
+  return ethers.ZeroAddress;
+}
+
+function computeMinimumReward(estimatedReward) {
+  const slip = Number(ui.slippageInput.value || "1");
+  const safeSlip = Math.min(Math.max(slip, 0), 50);
+  const bps = BigInt(Math.round(safeSlip * 100));
+  return estimatedReward * (10000n - bps) / 10000n;
+}
+
+function setBuyPending(isPending) {
+  state.isSubmitting = isPending;
+  if (!ui.buyBtn) return;
+
+  ui.buyBtn.disabled = isPending;
+  ui.buyBtn.textContent = isPending ? "购买处理中..." : "立即购买";
+}
+
+function bindWalletProviderEvents(provider) {
+  if (state.activeWalletProvider && state.activeWalletProvider.removeListener) {
+    state.activeWalletProvider.removeListener("accountsChanged", handleAccountsChanged);
+    state.activeWalletProvider.removeListener("chainChanged", handleChainChanged);
+  }
+
+  state.activeWalletProvider = provider || null;
+
+  if (provider && provider.on) {
+    provider.on("accountsChanged", handleAccountsChanged);
+    provider.on("chainChanged", handleChainChanged);
+  }
+}
+
+async function getSplitPreview(usdtAmount) {
+  const previewUser = state.account || ethers.ZeroAddress;
+  const preview = await state.revenueShare.previewSplit(previewUser, usdtAmount);
+
+  return {
+    directRecipient: preview[0],
+    indirectRecipient: preview[1],
+    directAmount: BigInt(preview[2]),
+    indirectAmount: BigInt(preview[3]),
+    feeAmount: BigInt(preview[4]),
+    productCostAmount: BigInt(preview[5]),
+    rewardPoolAmount: BigInt(preview[6])
+  };
+}
+
+async function reconcileOrders({ silent = true } = {}) {
+  if (!state.provider) return;
+
+  const orders = loadStoredOrders();
+  const pendingOrders = orders.filter((order) => order?.status === "pending" && order?.txHash);
+  if (!pendingOrders.length) return;
+
+  let changed = false;
+
+  for (const order of pendingOrders) {
+    try {
+      const receipt = await state.provider.getTransactionReceipt(order.txHash);
+      if (!receipt) continue;
+
+      order.updatedAt = new Date().toISOString();
+      order.blockNumber = receipt.blockNumber;
+      order.gasUsed = receipt.gasUsed ? receipt.gasUsed.toString() : order.gasUsed;
+      order.status = receipt.status === 1 ? "confirmed" : "failed";
+      if (receipt.status !== 1 && !order.errorMessage) {
+        order.errorMessage = "交易已上链，但执行失败或被回滚。";
+        order.errorType = "receipt_failed";
+      }
+      changed = true;
+    } catch (error) {
+      console.warn("订单链上对账失败:", order.txHash, error);
+    }
+  }
+
+  if (!changed) return;
+
+  saveStoredOrders(orders);
+  renderOrders();
+
+  if (!silent) {
+    const confirmed = orders.filter((order) => order.status === "confirmed").length;
+    const pending = orders.filter((order) => order.status === "pending").length;
+    setStatus(`订单状态已完成链上对账。已确认 ${confirmed} 笔，待确认 ${pending} 笔。`, "ok");
+  }
+}
+
+async function refreshPreview() {
+  try {
+    if (!getSelectedProduct()) {
+      resetPreview();
+      setStatus("请先选择一个商品。", "warn");
+      return;
+    }
+
+    const rawAmount = ui.amountInput.value.trim();
+    if (!rawAmount || Number(rawAmount) <= 0) {
+      resetPreview();
+      updateAmountCheck(null, null);
+      return;
+    }
+
+    const usdtAmount = parseAmount(rawAmount, state.usdtDecimals);
+    if (usdtAmount === 0n) {
+      resetPreview();
+      updateAmountCheck(null, null);
+      return;
+    }
+
+    const split = await getSplitPreview(usdtAmount);
+    state.lastSplitPreview = split;
+
+    // 获取预估奖励
+    let previewReward = 0n;
+    try {
+      previewReward = await state.rewarder.previewReward(split.rewardPoolAmount);
+    } catch (e) {
+      console.warn("预览奖励失败:", e);
+    }
+
+    const minimumReward = computeMinimumReward(previewReward);
+
+    state.lastPreviewReward = previewReward;
+
+    // 更新 UI
+    ui.directAmount.textContent = formatUnits(split.directAmount, state.usdtDecimals) + " " + state.usdtSymbol;
+    ui.indirectAmount.textContent = formatUnits(split.indirectAmount, state.usdtDecimals) + " " + state.usdtSymbol;
+    ui.feeAmount.textContent = formatUnits(split.feeAmount, state.usdtDecimals) + " " + state.usdtSymbol;
+    ui.costAmount.textContent = formatUnits(split.productCostAmount, state.usdtDecimals) + " " + state.usdtSymbol;
+    ui.rewardPoolAmount.textContent = formatUnits(split.rewardPoolAmount, state.usdtDecimals) + " " + state.usdtSymbol;
+    ui.estimatedReward.textContent = formatUnits(previewReward, state.assetDecimals) + " " + state.assetSymbol;
+    ui.minimumReward.textContent = formatUnits(minimumReward, state.assetDecimals) + " " + state.assetSymbol;
+
+    // 更新金额检查提示
+    if (state.account) {
+      try {
+        const balance = await state.usdt.balanceOf(state.account);
+        const allowance = await state.usdt.allowance(state.account, CONFIG.revenueShare);
+        updateAmountCheck(usdtAmount, balance, allowance);
+      } catch (e) {
+        console.warn("余额检查失败:", e);
+      }
+    }
+
+    // 更新绑定推荐人显示
+    if (state.account) {
+      try {
+        state.boundReferrer = await state.revenueShare.referrerOf(state.account);
+        ui.boundReferrer.textContent = state.boundReferrer === ethers.ZeroAddress ? "-" : shortAddress(state.boundReferrer);
+      } catch (e) {
+        // 忽略错误
+      }
+    }
+
+    const activeReferrer = getActiveReferrer();
+    const note = activeReferrer === ethers.ZeroAddress
+      ? "未检测到有效推荐人。可能使用默认推荐钱包。"
+      : "当前推荐人: " + shortAddress(activeReferrer);
+    setStatus("报价已刷新。\n" + note, "ok");
+  } catch (error) {
+    console.error(error);
+    resetPreview();
+    setStatus("刷新报价失败: " + extractError(error), "error");
+  }
+}
+
+// 更新金额检查提示
+function updateAmountCheck(usdtAmount, balance, allowance) {
+  const checkEl = document.getElementById("amountCheck");
+  const iconEl = document.getElementById("amountCheckIcon");
+  const textEl = document.getElementById("amountCheckText");
+
+  if (!checkEl || !iconEl || !textEl) return;
+
+  if (!usdtAmount || balance === null) {
+    checkEl.style.display = "none";
+    return;
+  }
+
+  checkEl.style.display = "flex";
+
+  const balanceNum = Number(formatUnits(balance, state.usdtDecimals));
+  const amountNum = Number(formatUnits(usdtAmount, state.usdtDecimals));
+  const allowanceNum = allowance ? Number(formatUnits(allowance, state.usdtDecimals)) : 0;
+
+  if (balance < usdtAmount) {
+    checkEl.className = "amount-check error";
+    iconEl.textContent = "❌";
+    textEl.textContent = `USDT 余额不足！当前: ${balanceNum.toFixed(6)} USDT，需要: ${amountNum.toFixed(6)} USDT，差额: ${(amountNum - balanceNum).toFixed(6)} USDT`;
+  } else if (allowance < usdtAmount) {
+    checkEl.className = "amount-check warning";
+    iconEl.textContent = "⚠️";
+    textEl.textContent = `USDT 授权额度不足！当前授权: ${allowanceNum.toFixed(6)} USDT，需要: ${amountNum.toFixed(6)} USDT。请先点击"授权 USDT"按钮。`;
+  } else {
+    checkEl.className = "amount-check ok";
+    iconEl.textContent = "✅";
+    textEl.textContent = `金额检查通过！余额: ${balanceNum.toFixed(6)} USDT，授权: ${allowanceNum.toFixed(6)} USDT`;
+  }
+}
+
+function resetPreview() {
+  ui.directAmount.textContent = "-";
+  ui.indirectAmount.textContent = "-";
+  ui.feeAmount.textContent = "-";
+  ui.costAmount.textContent = "-";
+  ui.rewardPoolAmount.textContent = "-";
+  ui.estimatedReward.textContent = "-";
+  ui.minimumReward.textContent = "-";
+  state.lastPreviewReward = 0n;
+  state.lastSplitPreview = null;
+}
+
+async function approveUsdt() {
+  try {
+    ensureConnected();
+    await ensureBsc();
+
+    const signerUsdt = state.usdt.connect(state.signer);
+    setStatus("正在发送 USDT 授权交易...", "warn");
+
+    const tx = await signerUsdt.approve(CONFIG.revenueShare, ethers.MaxUint256);
+    setStatus("授权交易已发送: " + shortAddress(tx.hash) + "\n等待确认...", "warn");
+
+    await tx.wait();
+    await refreshWalletMetrics();
+    setStatus("USDT 授权已确认。", "ok");
+  } catch (error) {
+    console.error(error);
+    setStatus("授权失败: " + extractError(error), "error");
+  }
+}
+
+async function buyNow() {
+  let pendingOrder = null;
+  let orderPersisted = false;
+  try {
+    if (state.isSubmitting) {
+      setStatus("上一笔购买仍在处理中，请等待钱包确认或链上回执。", "warn");
+      return;
+    }
+
+    setBuyPending(true);
+    ensureConnected();
+    await ensureBsc();
+
+    const selectedProduct = getSelectedProduct();
+    if (!selectedProduct) {
+      throw new Error("请先选择商品。");
+    }
+
+    const rawAmount = ui.amountInput.value.trim();
+    if (!rawAmount || Number(rawAmount) <= 0) {
+      throw new Error("请输入有效的 USDT 金额。");
+    }
+
+    const usdtAmount = parseAmount(rawAmount, state.usdtDecimals);
+    const expectedProductAmount = parseAmount(getProductSalePrice(selectedProduct), state.usdtDecimals);
+    if (usdtAmount !== expectedProductAmount) {
+      throw new Error(`商品价格校验失败。当前商品定价为 ${selectedProduct.price} ${state.usdtSymbol}，请重新选择商品后再购买。`);
+    }
+
+    const customer = validateCustomerInfo();
+    await refreshPreview();
+
+    const referrer = getActiveReferrer();
+    const split = await getSplitPreview(usdtAmount);
+    state.lastSplitPreview = split;
+    const minAssetAmount = computeMinimumReward(state.lastPreviewReward);
+
+    // 详细前置检查
+    setStatus("正在检查购买条件...", "warn");
+
+    // 0. 检查合约状态
+    try {
+      // 尝试调用一个 view 函数来检查合约是否正常工作
+      await state.revenueShare.usdt();
+    } catch (contractError) {
+      console.error("合约检查失败:", contractError);
+      throw new Error("RevenueShare 合约无法正常访问，请检查合约地址配置是否正确。");
+    }
+
+    // 检查 USDT 合约
+    try {
+      await state.usdt.symbol();
+      await state.usdt.decimals();
+    } catch (usdtError) {
+      console.error("USDT 合约检查失败:", usdtError);
+      throw new Error("USDT 合约无法正常访问。可能原因：\n1. 合约地址错误\n2. 网络连接问题\n3. 该地址不是有效的 ERC20 合约");
+    }
+
+    // 检查默认钱包配置
+    try {
+      const [defaultDirectWallet, defaultIndirectWallet] = await Promise.all([
+        state.revenueShare.defaultDirectWallet(),
+        state.revenueShare.defaultIndirectWallet()
+      ]);
+
+      if (defaultDirectWallet === ethers.ZeroAddress) {
+        throw new Error("合约配置错误：defaultDirectWallet 为零地址。请管理员调用 setWallets 设置正确的钱包地址。");
+      }
+      if (defaultIndirectWallet === ethers.ZeroAddress) {
+        throw new Error("合约配置错误：defaultIndirectWallet 为零地址。请管理员调用 setWallets 设置正确的钱包地址。");
+      }
+
+      console.log("默认钱包配置:");
+      console.log("- defaultDirectWallet:", defaultDirectWallet);
+      console.log("- defaultIndirectWallet:", defaultIndirectWallet);
+    } catch (walletError) {
+      if (walletError.message.includes("合约配置错误")) {
+        throw walletError;
+      }
+      console.warn("无法读取默认钱包配置:", walletError);
+    }
+
+    // 1. 检查 USDT 余额
+    let balance;
+    try {
+      balance = await state.usdt.balanceOf(state.account);
+    } catch (e) {
+      throw new Error("无法读取 USDT 余额，请检查 USDT 合约配置。");
+    }
+    if (balance < usdtAmount) {
+      throw new Error(`USDT 余额不足。当前余额: ${formatUnits(balance, state.usdtDecimals)} ${state.usdtSymbol}, 需要: ${formatUnits(usdtAmount, state.usdtDecimals)} ${state.usdtSymbol}`);
+    }
+
+    // 2. 检查授权额度
+    let allowance;
+    try {
+      allowance = await state.usdt.allowance(state.account, CONFIG.revenueShare);
+    } catch (e) {
+      throw new Error("无法读取 USDT 授权额度，请检查合约配置。");
+    }
+    if (allowance < usdtAmount) {
+      throw new Error(`USDT 授权额度不足。当前授权: ${formatUnits(allowance, state.usdtDecimals)} ${state.usdtSymbol}, 需要: ${formatUnits(usdtAmount, state.usdtDecimals)} ${state.usdtSymbol}。请先点击"授权 USDT"按钮。`);
+    }
+
+    // 3. 检查奖励合约是否设置
+    if (!state.rewarder || !state.rewarder.target) {
+      throw new Error("奖励合约未正确初始化，请刷新页面重试。");
+    }
+
+    // 3.0 检查 RevenueShare 当前绑定的 Rewarder 是否与前端目标一致
+    try {
+      const configuredRewarder = await state.revenueShare.assetARewarder();
+      if (configuredRewarder.toLowerCase() !== CONFIG.rewarder.toLowerCase()) {
+        throw new Error(
+          `RevenueShare 配置错误：当前绑定的 Rewarder 为 ${configuredRewarder}，前端目标为 ${CONFIG.rewarder}。请管理员调用 setAssetARewarder 修正。`
+        );
+      }
+    } catch (rewarderBindingError) {
+      if (rewarderBindingError.message.includes("RevenueShare 配置错误")) {
+        throw rewarderBindingError;
+      }
+      console.warn("无法读取 RevenueShare 绑定的 Rewarder:", rewarderBindingError);
+    }
+
+    // 3.1 检查奖励金库配置是否与前端目标合约一致
+    try {
+      const [configuredRevenueShare, configuredOracle] = await Promise.all([
+        state.rewarder.revenueShareContract(),
+        state.rewarder.assetOracle()
+      ]);
+
+      if (configuredRevenueShare.toLowerCase() !== CONFIG.revenueShare.toLowerCase()) {
+        throw new Error(
+          `奖励金库配置错误：当前绑定的 RevenueShare 为 ${configuredRevenueShare}，前端目标为 ${CONFIG.revenueShare}。请管理员调用 setRevenueShareContract 修正。`
+        );
+      }
+
+      if (configuredOracle.toLowerCase() !== CONFIG.oracle.toLowerCase()) {
+        throw new Error(
+          `奖励金库配置错误：当前绑定的 Oracle 为 ${configuredOracle}，前端目标为 ${CONFIG.oracle}。请管理员调用 setAssetOracle 修正。`
+        );
+      }
+    } catch (rewarderConfigError) {
+      if (rewarderConfigError.message.includes("奖励金库配置错误")) {
+        throw rewarderConfigError;
+      }
+      console.warn("无法完整读取奖励金库配置:", rewarderConfigError);
+    }
+
+    // 4. 检查预估奖励
+    if (state.lastPreviewReward === 0n) {
+      throw new Error("无法获取奖励预估，请检查网络连接或稍后重试。");
+    }
+
+    // 5. 检查 BNB 余额（用于支付 Gas）
+    const bnbBalance = await state.browserProvider.getBalance(state.account);
+    if (bnbBalance === 0n) {
+      throw new Error("BNB 余额为 0，无法支付交易手续费。请先充值 BNB。");
+    }
+
+    // 6. 检查 AssetSourceWallet 是否有足够的 AssetToken 余额和授权来支付奖励
+    try {
+      const assetSourceWallet = await state.rewarder.assetSourceWallet();
+      const [assetBalance, assetAllowanceToRewarder] = await Promise.all([
+        state.asset.balanceOf(assetSourceWallet),
+        state.asset.allowance(assetSourceWallet, CONFIG.rewarder)
+      ]);
+      console.log("AssetSourceWallet 信息:");
+      console.log("- 地址:", assetSourceWallet);
+      console.log("- AssetToken 余额:", formatUnits(assetBalance, state.assetDecimals), state.assetSymbol);
+      console.log("- 对 Rewarder 授权:", formatUnits(assetAllowanceToRewarder, state.assetDecimals), state.assetSymbol);
+      console.log("- 预估奖励:", formatUnits(state.lastPreviewReward, state.assetDecimals), state.assetSymbol);
+
+      if (assetBalance < state.lastPreviewReward) {
+        throw new Error(`奖励池余额不足！\nAssetSourceWallet (${shortAddress(assetSourceWallet)}) 的 ${state.assetSymbol} 余额: ${formatUnits(assetBalance, state.assetDecimals)}\n预估奖励: ${formatUnits(state.lastPreviewReward, state.assetDecimals)}\n\n请联系管理员充值奖励池。`);
+      }
+
+      if (assetAllowanceToRewarder < state.lastPreviewReward) {
+        throw new Error(`奖励池授权不足！\nAssetSourceWallet (${shortAddress(assetSourceWallet)}) 对 Rewarder (${shortAddress(CONFIG.rewarder)}) 的 ${state.assetSymbol} 授权额度: ${formatUnits(assetAllowanceToRewarder, state.assetDecimals)}\n预估奖励: ${formatUnits(state.lastPreviewReward, state.assetDecimals)}\n\n请管理员用资产钱包先对 Rewarder 合约执行 approve。`);
+      }
+    } catch (e) {
+      if (e.message.includes("奖励池余额不足") || e.message.includes("奖励池授权不足")) throw e;
+      console.warn("无法检查 AssetSourceWallet 余额:", e);
+    }
+
+    // 7. 用公共 RPC 先做静态模拟，避免钱包 estimateGas 的模糊报错直接中断购买
+    let publicRpcGasEstimate = null;
+    try {
+      publicRpcGasEstimate = await simulatePurchase(usdtAmount, referrer, minAssetAmount);
+    } catch (simulateError) {
+      console.error("购买静态模拟失败:", simulateError);
+      const errorMsg = extractError(simulateError);
+
+      // 尝试获取更详细的错误信息
+      let detailedError = errorMsg;
+      try {
+        // 尝试调用 previewSplit 来获取更多信息
+        const preview = await state.revenueShare.previewSplit(state.account, usdtAmount);
+        console.log("previewSplit 结果:", preview);
+      } catch (previewError) {
+        console.error("previewSplit 也失败了:", previewError);
+        detailedError += "\n\npreviewSplit 调用也失败，可能是合约状态问题。";
+      }
+
+      // 输出详细的调试信息
+      console.log("=== 购买调试信息 ===");
+      console.log("用户地址:", state.account);
+      console.log("USDT 金额:", formatUnits(usdtAmount, state.usdtDecimals));
+      console.log("推荐人地址:", referrer);
+      console.log("最低奖励:", formatUnits(minAssetAmount, state.assetDecimals));
+      console.log("预估奖励:", formatUnits(state.lastPreviewReward, state.assetDecimals));
+      console.log("RevenueShare:", CONFIG.revenueShare);
+      console.log("Rewarder:", CONFIG.rewarder);
+      console.log("Oracle:", CONFIG.oracle);
+
+      throw new Error(`交易预执行失败: ${detailedError}\n\n可能原因：\n1. 推荐人绑定校验失败\n2. 滑点保护触发\n3. 奖励金库或 Oracle 配置异常\n4. 奖励池余额或授权不足\n5. 合约参数不满足当前链上状态\n\n请打开浏览器控制台(F12)查看详细调试信息。`);
+    }
+
+    // 输出购买前的调试信息
+    console.log("=== 购买交易信息 ===");
+    console.log("用户地址:", state.account);
+    console.log("USDT 金额:", formatUnits(usdtAmount, state.usdtDecimals));
+    console.log("推荐人地址:", referrer);
+    console.log("最低奖励:", formatUnits(minAssetAmount, state.assetDecimals));
+    console.log("预估奖励:", formatUnits(state.lastPreviewReward, state.assetDecimals));
+
+    // 发送购买交易
+    const signerRevenueShare = state.revenueShare.connect(state.signer);
+    setStatus("正在发送购买交易...\n请在钱包中确认交易", "warn");
+
+    // 添加 gas 限制估算
+    let gasLimit;
+    if (publicRpcGasEstimate) {
+      gasLimit = (publicRpcGasEstimate * 120n) / 100n;
+    } else {
+      try {
+      gasLimit = await signerRevenueShare.purchase.estimateGas(usdtAmount, referrer, minAssetAmount);
+      // 增加 20% 缓冲
+      gasLimit = (gasLimit * 120n) / 100n;
+      } catch (gasError) {
+        console.warn("钱包侧 Gas 估算失败，回退到默认 gasLimit:", gasError);
+        // 使用默认 gas 限制，避免部分钱包因 estimateGas 模糊报错直接阻塞购买
+        gasLimit = 500000n;
+      }
+    }
+
+    const tx = await signerRevenueShare.purchase(usdtAmount, referrer, minAssetAmount, {
+      gasLimit: gasLimit
+    });
+
+    // 创建待处理订单
+    pendingOrder = {
+      id: generateUUID(),
+      orderNo: createOrderNumber(),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      status: "pending",
+      wallet: state.account,
+      name: customer.name,
+      phone: customer.phone,
+      address: customer.address,
+      note: customer.note,
+      productId: selectedProduct.id,
+      productName: selectedProduct.name,
+      productSku: selectedProduct.sku,
+      productOriginalPrice: getProductOriginalPrice(selectedProduct),
+      productSalePrice: getProductSalePrice(selectedProduct),
+      productDiscountPercent: getProductDiscountPercent(selectedProduct),
+      productPrice: getProductSalePrice(selectedProduct),
+      referrer,
+      usdtAmount: usdtAmount.toString(),
+      rewardPoolAmount: split.rewardPoolAmount.toString(),
+      directAmount: split.directAmount.toString(),
+      indirectAmount: split.indirectAmount.toString(),
+      feeAmount: split.feeAmount.toString(),
+      productCostAmount: split.productCostAmount.toString(),
+      assetAmount: state.lastPreviewReward.toString(),
+      minAssetAmount: minAssetAmount.toString(),
+      txHash: tx.hash
+    };
+    try {
+      upsertOrder(pendingOrder);
+      orderPersisted = true;
+    } catch (storageError) {
+      pendingOrder = null;
+      throw new Error(`购买交易已发送，交易哈希: ${tx.hash}\n但本地订单保存失败: ${storageError.message}`);
+    }
+
+    setStatus("购买交易已发送: " + shortAddress(tx.hash) + "\n等待确认...", "warn");
+    const receipt = await tx.wait();
+
+    // 检查交易状态
+    if (receipt.status === 0) {
+      throw new Error("交易执行失败（被回滚），请检查合约状态或联系管理员。");
+    }
+
+    if (orderPersisted) {
+      updateOrder(pendingOrder.id, {
+        status: "confirmed",
+        updatedAt: new Date().toISOString(),
+        blockNumber: receipt.blockNumber,
+        gasUsed: receipt.gasUsed.toString()
+      });
+    }
+
+    await refreshWalletMetrics();
+    await refreshPreview();
+    setStatus("购买已成功确认！\n区块号: " + receipt.blockNumber, "ok");
+  } catch (error) {
+    console.error("购买失败详情:", error);
+
+    // 详细错误分析
+    const analysis = analyzeError(error);
+    let errorMsg = "购买失败: " + analysis.message;
+    if (analysis.suggestion) {
+      errorMsg += "\n\n建议: " + analysis.suggestion;
+    }
+
+    // 记录到控制台供调试
+    console.log("错误分析:", analysis);
+    console.log("原始错误:", error);
+
+    if (pendingOrder && orderPersisted) {
+      try {
+        updateOrder(pendingOrder.id, {
+          status: "failed",
+          updatedAt: new Date().toISOString(),
+          errorMessage: analysis.message,
+          errorType: analysis.type
+        });
+      } catch (storageError) {
+        console.error("写入失败订单状态时出错:", storageError);
+      }
+    }
+    setStatus(errorMsg, "error");
+  } finally {
+    setBuyPending(false);
+  }
+}
+
+async function copyReferralLink() {
+  try {
+    ensureConnected();
+    const baseUrl = getBaseUrl();
+    const link = baseUrl + "?ref=" + state.account;
+    await navigator.clipboard.writeText(link);
+    setStatus("推荐链接已复制:\n" + link, "ok");
+  } catch (error) {
+    console.error(error);
+    setStatus("复制链接失败: " + extractError(error), "error");
+  }
+}
+
+function ensureConnected() {
+  if (!state.signer || !state.account) {
+    throw new Error("请先连接钱包。");
+  }
+}
+
+async function ensureBsc() {
+  const network = await state.browserProvider.getNetwork();
+  if (Number(network.chainId) !== CONFIG.chainId) {
+    throw new Error("请将钱包切换到 BSC 主网。");
+  }
+}
+
+async function handleAccountsChanged(accounts) {
+  if (!accounts.length) {
+    bindWalletProviderEvents(null);
+    state.signer = null;
+    state.account = null;
+    state.chainId = null;
+    state.isAdmin = false;
+    state.lastWalletType = null;
+    state.lastSplitPreview = null;
+    ui.walletAddress.textContent = "未连接";
+    ui.networkName.textContent = "已断开";
+    ui.boundReferrer.textContent = "-";
+    updateWalletButtonState();
+    setBuyPending(false);
+    await refreshWalletMetrics();
+    resetPreview();
+    renderAdminProducts();
+    renderOrders();
+    setStatus("钱包已断开。", "warn");
+    return;
+  }
+  const reconnectType = state.lastWalletType || "injected";
+  await connectWithWallet(reconnectType);
+}
+
+async function handleChainChanged() {
+  if (state.browserProvider && state.signer) {
+    const reconnectType = state.lastWalletType || "injected";
+    await connectWithWallet(reconnectType);
+  }
+}
+
+// ============================================
+// 初始化
+// ============================================
+
+function initUI() {
+  // 获取所有 UI 元素
+  const ids = [
+    "connectBtn", "switchBtn", "copyRefLinkBtn", "previewBtn", "approveBtn", "buyBtn",
+    "amountInput", "slippageInput", "referrerInput",
+    "productGrid", "selectedProductBox", "selectedProductName", "selectedProductTag", "selectedProductDesc",
+    "selectedProductPrice", "selectedProductOriginalPrice", "selectedProductDiscount", "selectedProductSku", "adminProductsSection", "productAdminList", "productStatusBox",
+    "productNameInput", "productOriginalPriceInput", "productPriceInput", "productTagInput", "productImageInput", "productDescriptionInput",
+    "saveProductBtn", "resetProductBtn",
+    "customerNameInput", "customerPhoneInput", "customerAddressInput", "customerNoteInput",
+    "statusBox", "orderStatusBox", "walletAddress", "networkName", "boundReferrer",
+    "directAmount", "indirectAmount", "feeAmount", "costAmount", "rewardPoolAmount",
+    "estimatedReward", "minimumReward", "usdtBalance", "usdtAllowance",
+    "productCostBps", "rewardBps", "usdtTokenAddress", "assetTokenAddress", "revenueShareRewarder", "assetSourceWallet", "rewarderRevenueShare", "rewarderOracle",
+    "ordersVisibleCount", "ordersConfirmedCount", "ordersUsdtTotal", "adminStatus",
+    "orderSearchInput", "orderStatusFilter", "refreshOrdersBtn",
+    "exportVisibleCsvBtn", "exportVisibleJsonBtn", "exportAllCsvBtn", "exportAllJsonBtn", "ordersTableBody",
+    "revenueShareAddress", "rewarderAddress", "oracleAddress",
+    "walletModal", "closeWalletModal"
+  ];
+
+  ids.forEach(id => {
+    ui[id] = document.getElementById(id);
+  });
+}
+
+async function init() {
+  try {
+    initUI();
+    markWalletAvailability();
+    updateWalletButtonState();
+    let initStatusMessage = "前端已加载。请连接钱包以继续。";
+    let initStatusType = "ok";
+
+    // 检查 URL 参数中的推荐人
+    const queryReferrer = getQueryReferrer();
+    if (queryReferrer) {
+      ui.referrerInput.value = queryReferrer;
+    }
+
+    // 加载合约
+    await loadContracts();
+
+    if (!window.ethereum && isFileProtocol()) {
+      initStatusMessage = "当前页面是 file:// 本地文件模式。若钱包未注入，请改用本地 HTTP 服务打开，或在钱包扩展里允许访问文件网址。";
+      initStatusType = "warn";
+    }
+
+    // 绑定事件处理器
+    ui.previewBtn.addEventListener("click", refreshPreview);
+    ui.approveBtn.addEventListener("click", approveUsdt);
+    ui.buyBtn.addEventListener("click", buyNow);
+    ui.refreshOrdersBtn.addEventListener("click", async () => {
+      await reconcileOrders({ silent: false });
+      renderOrders();
+    });
+    ui.exportVisibleCsvBtn.addEventListener("click", () => exportOrders("csv", "visible"));
+    ui.exportVisibleJsonBtn.addEventListener("click", () => exportOrders("json", "visible"));
+    ui.exportAllCsvBtn.addEventListener("click", () => exportOrders("csv", "all"));
+    ui.exportAllJsonBtn.addEventListener("click", () => exportOrders("json", "all"));
+    ui.saveProductBtn.addEventListener("click", saveProductFromForm);
+    ui.resetProductBtn.addEventListener("click", resetProductForm);
+    ui.connectBtn.addEventListener("click", connectWallet);
+    ui.switchBtn.addEventListener("click", switchToBsc);
+    ui.copyRefLinkBtn.addEventListener("click", copyReferralLink);
+
+    // 钱包模态框事件
+    ui.closeWalletModal.addEventListener("click", hideWalletModal);
+    ui.walletModal.addEventListener("click", (e) => {
+      if (e.target === ui.walletModal) hideWalletModal();
+    });
+
+    // 钱包选项点击事件
+    document.querySelectorAll(".wallet-option").forEach(option => {
+      option.addEventListener("click", () => {
+        if (option.classList.contains("disabled")) {
+          return;
+        }
+        const walletType = option.getAttribute("data-wallet");
+        connectWithWallet(walletType);
+      });
+    });
+
+    // 输入监听
+    ui.amountInput.addEventListener("input", refreshPreview);
+    ui.referrerInput.addEventListener("input", refreshPreview);
+    ui.slippageInput.addEventListener("input", refreshPreview);
+    ui.orderSearchInput.addEventListener("input", renderOrders);
+    ui.orderStatusFilter.addEventListener("change", renderOrders);
+
+    // 设置初始状态
+    ui.networkName.textContent = CONFIG.chainName;
+    renderProducts();
+    renderAdminProducts();
+    await reconcileOrders();
+    renderOrders();
+    setStatus(initStatusMessage, initStatusType);
+  } catch (error) {
+    console.error("初始化失败:", error);
+    setStatus("初始化失败: " + extractError(error), "error");
+  }
+}
+
+// 启动应用
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", init);
+} else {
+  init();
+}
