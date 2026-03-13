@@ -464,6 +464,29 @@ function getBaseUrl() {
   return window.location.origin + window.location.pathname;
 }
 
+// 获取注入的钱包提供者 - 优先使用 TokenPocket 和 MetaMask
+function getInjectedEthereum() {
+  const eth = window.ethereum;
+  if (!eth) return null;
+
+  // 处理多个 providers 的情况
+  const providers = Array.isArray(eth.providers) ? eth.providers : null;
+  if (providers && providers.length > 0) {
+    // 优先查找 TokenPocket
+    const tokenPocket = providers.find((p) => p && p.isTokenPocket);
+    if (tokenPocket) return tokenPocket;
+
+    // 其次查找 MetaMask
+    const metaMask = providers.find((p) => p && p.isMetaMask);
+    if (metaMask) return metaMask;
+
+    // 如果都没找到，返回第一个
+    return providers[0];
+  }
+
+  return eth;
+}
+
 // 测试 RPC 节点可用性
 async function testRpcNode(url) {
   try {
@@ -1574,8 +1597,8 @@ async function connectWithWallet(walletType) {
 
 // 保持向后兼容的通用连接函数 - 优先使用 TP 钱包
 async function connectWallet() {
-  const providers = getInjectedProviders();
-  if (!providers.length) {
+  const injectedEthereum = getInjectedEthereum();
+  if (!injectedEthereum) {
     if (isFileProtocol()) {
       setStatus("未检测到钱包。你当前可能是直接用 file:// 打开的页面，请改用本地 HTTP 服务，或在钱包扩展里开启“允许访问文件网址”。", "error");
     } else {
@@ -1584,20 +1607,43 @@ async function connectWallet() {
     return;
   }
 
-  // 优先检查是否有 TP 钱包
-  const tpProvider = resolveProvider("tokenpocket");
-  if (tpProvider) {
-    await connectWithWallet("tokenpocket");
-    return;
-  }
+  // 使用 any 网络，这样 ethers 不会在链切换时卡住
+  state.browserProvider = new ethers.BrowserProvider(injectedEthereum, "any");
+  await state.browserProvider.send("eth_requestAccounts", []);
+  state.signer = await state.browserProvider.getSigner();
+  state.account = await state.signer.getAddress();
+  
+  // 设置当前使用的 provider
+  window.currentProvider = injectedEthereum;
+  bindWalletProviderEvents(injectedEthereum);
 
-  // 其次检查其他钱包
-  if (providers.length === 1) {
-    await connectWithWallet("injected");
-    return;
-  }
+  const network = await state.browserProvider.getNetwork();
+  state.chainId = Number(network.chainId);
 
-  showWalletModal();
+  // 检查是否为管理员
+  const isContractOwner = state.adminAddress !== ethers.ZeroAddress &&
+                          state.account.toLowerCase() === state.adminAddress.toLowerCase();
+  const allAdmins = getAllAdmins();
+  const isConfiguredAdmin = allAdmins.some(
+    addr => addr.toLowerCase() === state.account.toLowerCase()
+  );
+  state.isAdmin = isContractOwner || isConfiguredAdmin;
+
+  ui.walletAddress.textContent = shortAddress(state.account);
+  ui.networkName.textContent = state.chainId === CONFIG.chainId ? CONFIG.chainName : "Chain ID " + state.chainId;
+  updateWalletButtonState();
+
+  // 获取绑定的推荐人
+  state.boundReferrer = await state.revenueShare.referrerOf(state.account);
+  ui.boundReferrer.textContent = state.boundReferrer === ethers.ZeroAddress ? "-" : shortAddress(state.boundReferrer);
+
+  await refreshWalletMetrics();
+  await refreshPreview();
+  renderAdminProducts();
+  await reconcileOrders();
+  renderOrders();
+
+  setStatus("钱包连接成功。", "ok");
 }
 
 async function switchToBsc() {
@@ -2289,14 +2335,12 @@ async function handleAccountsChanged(accounts) {
     setStatus("钱包已断开。", "warn");
     return;
   }
-  const reconnectType = state.lastWalletType || "injected";
-  await connectWithWallet(reconnectType);
+  await connectWallet();
 }
 
 async function handleChainChanged() {
   if (state.browserProvider && state.signer) {
-    const reconnectType = state.lastWalletType || "injected";
-    await connectWithWallet(reconnectType);
+    await connectWallet();
   }
 }
 
