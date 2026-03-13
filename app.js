@@ -9,7 +9,15 @@ const CONFIG = {
   chainIdHex: "0x38",
   chainId: 56,
   chainName: "BSC Mainnet",
-  rpcUrl: "https://bsc-dataseed.binance.org",
+  // 多个 RPC 节点，按优先级排序
+  rpcUrls: [
+    "https://bsc-dataseed1.binance.org",
+    "https://bsc-dataseed2.binance.org",
+    "https://bsc-dataseed3.binance.org",
+    "https://bsc-dataseed4.binance.org",
+    "https://rpc.ankr.com/bsc",
+    "https://bsc.publicnode.com"
+  ],
   blockExplorer: "https://bscscan.com",
 
   // 合约地址 - 请根据实际部署修改
@@ -454,6 +462,39 @@ function getBaseUrl() {
     return window.location.href.split("?")[0].split("#")[0];
   }
   return window.location.origin + window.location.pathname;
+}
+
+// 测试 RPC 节点可用性
+async function testRpcNode(url) {
+  try {
+    const provider = new ethers.JsonRpcProvider(url, CONFIG.chainId);
+    // 测试节点连接，获取最新区块号
+    await provider.getBlockNumber();
+    return true;
+  } catch (error) {
+    console.warn(`RPC 节点 ${url} 不可用:`, error.message);
+    return false;
+  }
+}
+
+// 获取可用的 RPC 节点
+async function getAvailableRpcUrl() {
+  // 优先使用上次成功的节点
+  const lastRpcUrl = localStorage.getItem('lastRpcUrl');
+  if (lastRpcUrl && await testRpcNode(lastRpcUrl)) {
+    return lastRpcUrl;
+  }
+
+  // 测试所有节点
+  for (const url of CONFIG.rpcUrls) {
+    if (await testRpcNode(url)) {
+      localStorage.setItem('lastRpcUrl', url);
+      return url;
+    }
+  }
+
+  // 如果所有节点都不可用，返回第一个作为默认值
+  return CONFIG.rpcUrls[0];
 }
 
 // ============================================
@@ -1241,12 +1282,17 @@ function updateWalletButtonState() {
 }
 
 async function loadContracts() {
-  // 初始化 provider
-  state.provider = new ethers.JsonRpcProvider(CONFIG.rpcUrl, CONFIG.chainId);
+  try {
+    // 获取可用的 RPC 节点
+    const rpcUrl = await getAvailableRpcUrl();
+    console.log('使用 RPC 节点:', rpcUrl);
+    
+    // 初始化 provider
+    state.provider = new ethers.JsonRpcProvider(rpcUrl, CONFIG.chainId);
 
-  // 初始化合约
-  state.revenueShare = new ethers.Contract(CONFIG.revenueShare, REVENUE_SHARE_ABI, state.provider);
-  state.rewarder = new ethers.Contract(CONFIG.rewarder, REWARDER_ABI, state.provider);
+    // 初始化合约
+    state.revenueShare = new ethers.Contract(CONFIG.revenueShare, REVENUE_SHARE_ABI, state.provider);
+    state.rewarder = new ethers.Contract(CONFIG.rewarder, REWARDER_ABI, state.provider);
 
   // 获取代币地址
   state.usdtAddress = await state.revenueShare.usdt();
@@ -1411,6 +1457,10 @@ async function loadContracts() {
   renderProducts();
   renderAdminProducts();
   renderOrders();
+  } catch (error) {
+    console.error('加载合约失败:', error);
+    setStatus('连接区块链失败，请检查网络连接后刷新页面。', 'error');
+  }
 }
 
 // 显示钱包选择模态框
@@ -1452,10 +1502,25 @@ async function connectWithWallet(walletType) {
       binance: "https://www.bnbchain.org/en/binance-wallet",
       okx: "https://www.okx.com/web3"
     };
+    
+    // 国内可用的备用链接
+    const cnDownloadUrls = {
+      tokenpocket: "https://www.tokenpocket.pro/",
+      metamask: "https://metamask.io/download/",
+      okx: "https://www.okx.com/web3"
+    };
     if (downloadUrls[walletType]) {
       setTimeout(() => {
-        if (confirm(`是否打开 ${name} 下载页面？`)) {
-          window.open(downloadUrls[walletType], "_blank");
+        const cnUrl = cnDownloadUrls[walletType];
+        if (cnUrl) {
+          const choice = confirm(`是否打开 ${name} 下载页面？\n\n推荐使用国内链接以获得更好的访问速度。`);
+          if (choice) {
+            window.open(cnUrl, "_blank");
+          }
+        } else {
+          if (confirm(`是否打开 ${name} 下载页面？`)) {
+            window.open(downloadUrls[walletType], "_blank");
+          }
         }
       }, 100);
     }
@@ -1557,7 +1622,7 @@ async function switchToBsc() {
             chainId: CONFIG.chainIdHex,
             chainName: CONFIG.chainName,
             nativeCurrency: { name: "BNB", symbol: "BNB", decimals: 18 },
-            rpcUrls: [CONFIG.rpcUrl],
+            rpcUrls: CONFIG.rpcUrls,
             blockExplorerUrls: [CONFIG.blockExplorer]
           }]
         });
