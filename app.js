@@ -67,52 +67,6 @@ const REVERT_ERROR_IFACE = new ethers.Interface([
   "error Panic(uint256)"
 ]);
 
-const CUSTOM_ERROR_MESSAGES = {
-  MinDeposit: "质押数量低于最小值",
-  InvalidMultiple: "质押数量必须为整数倍",
-  AmountExceedsMax: "质押数量超过单笔上限",
-  MaxStakesExceeded: "该地址已达到最大质押笔数",
-  ActiveStakeNotMatured: "已有未到期的有效质押",
-  CannotReferSelf: "不能推荐自己",
-  ReferrerMustHaveStake: "推荐人必须有有效质押",
-  ReferrerRequired: "非首位用户必须绑定推荐人",
-  CircularReference: "推荐关系形成闭环",
-  AlreadyInDownline: "关系已存在于下线中",
-  ContractAddressNotAllowed: "仅允许 EOA 钱包",
-  ReferrerContractNotAllowed: "推荐人不能是合约地址",
-  NotAuthorized: "无权限执行此操作",
-  InvalidStakeId: "stakeId 无效",
-  StakeNotActive: "质押未激活",
-  StakeNotMatured: "质押未到期",
-  CannotWithdrawLastStake: "最后一笔有效质押不可直接提现",
-  InsufficientRestake: "新质押数量不足以压单",
-  InsufficientPoolBalance: "合约池余额不足",
-  NoPendingRewards: "暂无可领取代理奖励",
-  TokenTransferFromFailed: "transferFrom 失败（检查授权与余额）",
-  TokenTransferFailed: "代币转账失败",
-  RewarderNotSet: "奖励合约未设置",
-  AmountIsZero: "金额为零",
-  UserIsZero: "用户地址为零",
-  ReferrerIsZero: "推荐人地址为零",
-  SelfReferral: "不能将自己设为推荐人",
-  ReferrerAlreadyBound: "推荐人已绑定",
-  AssetAmountIsZero: "资产金额为零",
-  AssetAmountBelowMinimum: "资产金额低于最低值",
-  UnauthorizedCaller: "未授权的调用者",
-  SourceWalletIsZero: "资产来源钱包为零地址",
-  OracleIsZero: "预言机地址为零地址"
-};
-
-const CUSTOM_ERROR_SELECTORS = {};
-Object.keys(CUSTOM_ERROR_MESSAGES).forEach((name) => {
-  try {
-    const selector = ethers.id(`${name}()`).slice(0, 10).toLowerCase();
-    CUSTOM_ERROR_SELECTORS[selector] = name;
-  } catch (e) {
-    // ignore
-  }
-});
-
 // 应用状态
 const state = {
   provider: null,
@@ -123,7 +77,6 @@ const state = {
   lastWalletType: null,
   activeWalletProvider: null,
   isSubmitting: false,
-  listenersBound: false,
   adminAddress: ethers.ZeroAddress,
   isAdmin: false,
   products: [],
@@ -219,6 +172,16 @@ const WALLET_CONFIG = {
   }
 };
 
+const PREFERRED_WALLET_ORDER = [
+  "tokenpocket",
+  "okx",
+  "trust",
+  "metamask",
+  "binance",
+  "math",
+  "injected"
+];
+
 // ============================================
 // 工具函数
 // ============================================
@@ -238,6 +201,22 @@ function setOrderStatus(message, type = "") {
 function shortAddress(value) {
   if (!value || value === ethers.ZeroAddress) return "-";
   return value.slice(0, 6) + "..." + value.slice(-4);
+}
+
+function isMobileDevice() {
+  return /Android|iPhone|iPad|iPod|HarmonyOS|Mobile/i.test(navigator.userAgent || "");
+}
+
+function getNoWalletMessage() {
+  if (isFileProtocol()) {
+    return "未检测到钱包。你当前可能是直接用 file:// 打开的页面，请改用本地 HTTP 服务，或在钱包扩展里开启“允许访问文件网址”。";
+  }
+
+  if (isMobileDevice()) {
+    return "当前浏览器未注入钱包。请优先使用 TokenPocket、OKX、Trust Wallet 或 MetaMask 的内置 DApp 浏览器打开本页，这种方式通常不依赖 WalletConnect 中继，也更适合国内网络环境。";
+  }
+
+  return "未检测到浏览器钱包。请先安装 MetaMask、OKX Wallet、Trust Wallet 等插件，或改用钱包内置浏览器打开本页。";
 }
 
 function formatDateTime(value) {
@@ -346,12 +325,6 @@ function decodeRevertData(data) {
   }
 
   try {
-    const selector = data.slice(0, 10).toLowerCase();
-    if (CUSTOM_ERROR_SELECTORS[selector]) {
-      const errorName = CUSTOM_ERROR_SELECTORS[selector];
-      return CUSTOM_ERROR_MESSAGES[errorName] || errorName;
-    }
-
     const parsed = REVERT_ERROR_IFACE.parseError(data);
     if (!parsed) return "";
 
@@ -400,48 +373,6 @@ function extractError(error) {
   }
 
   return "未知错误";
-}
-
-function isGasTooLowError(errorObj) {
-  const code = errorObj?.code;
-  const msg = String(errorObj?.message || errorObj || "");
-  return (
-    code === -32000 &&
-    /gas price below minimum|gas tip cap .* below minimum|minimum needed/i.test(msg)
-  );
-}
-
-async function sendTxWithGasRetry(signer, txRequest, maxRetries = 3) {
-  let lastError = null;
-
-  for (let attempt = 0; attempt < maxRetries; attempt++) {
-    try {
-      const feeData = await signer.provider.getFeeData();
-      const maxFee = feeData.maxFeePerGas;
-      const priority = feeData.maxPriorityFeePerGas;
-
-      if (attempt > 0 && maxFee && priority) {
-        const boostedMaxFee = (maxFee * 110n) / 100n;
-        const boostedPriority = (priority * 110n) / 100n;
-        txRequest.maxFeePerGas = boostedMaxFee;
-        txRequest.maxPriorityFeePerGas = boostedPriority;
-        console.log(`Gas 重试 #${attempt}: maxFee ${ethers.formatUnits(boostedMaxFee, "gwei")} gwei, priority ${ethers.formatUnits(boostedPriority, "gwei")} gwei`);
-      }
-
-      const tx = await signer.sendTransaction(txRequest);
-      return tx;
-    } catch (error) {
-      lastError = error;
-      if (isGasTooLowError(error) && attempt < maxRetries - 1) {
-        console.warn(`Gas 价格过低，准备重试 (${attempt + 1}/${maxRetries})...`);
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-        continue;
-      }
-      throw error;
-    }
-  }
-
-  throw lastError;
 }
 
 async function buildPurchaseTxRequest(usdtAmount, referrer, minAssetAmount) {
@@ -1302,30 +1233,6 @@ function getInjectedProviders() {
   return [ethereum];
 }
 
-function getInjectedEthereum() {
-  const eth = window.ethereum;
-  if (!eth) return null;
-
-  const providers = Array.isArray(eth.providers) ? eth.providers : null;
-  if (providers && providers.length > 0) {
-    const tokenPocket = providers.find((p) => p && p.isTokenPocket);
-    if (tokenPocket) return tokenPocket;
-
-    const metaMask = providers.find((p) => p && p.isMetaMask && !p.isTrust);
-    if (metaMask) return metaMask;
-
-    const trust = providers.find((p) => p && (p.isTrust || p.isTrustWallet));
-    if (trust) return trust;
-
-    const okx = providers.find((p) => p && (p.isOKExWallet || p.isOkxWallet));
-    if (okx) return okx;
-
-    return providers[0];
-  }
-
-  return eth;
-}
-
 function resolveProvider(walletType = "injected") {
   const providers = getInjectedProviders();
   if (!providers.length) return null;
@@ -1333,6 +1240,15 @@ function resolveProvider(walletType = "injected") {
   const config = WALLET_CONFIG[walletType] || WALLET_CONFIG.injected;
   const matchedProvider = providers.find((provider) => config.match(provider));
   return matchedProvider || (walletType === "injected" ? providers[0] : null);
+}
+
+function getPreferredWalletType() {
+  for (const walletType of PREFERRED_WALLET_ORDER) {
+    if (resolveProvider(walletType)) {
+      return walletType;
+    }
+  }
+  return null;
 }
 
 function markWalletAvailability() {
@@ -1553,73 +1469,48 @@ async function connectWithWallet(walletType) {
 
   if (walletType === "walletconnect") {
     setStatus("WalletConnect 需要额外集成。请使用浏览器插件钱包。", "warn");
-    return;
+    return false;
   }
 
-  const injectedEthereum = getInjectedEthereum();
-  if (!injectedEthereum) {
-    if (isFileProtocol()) {
-      setStatus("未检测到钱包。你当前可能是直接用 file:// 打开的页面，请改用本地 HTTP 服务，或在钱包扩展里开启"允许访问文件网址"。", "error");
-    } else {
-      setStatus("未检测到浏览器钱包。请先安装 MetaMask、OKX Wallet、Trust Wallet 等插件。", "error");
+  const provider = resolveProvider(walletType);
+
+  if (!provider) {
+    const name = WALLET_CONFIG[walletType]?.name || "该钱包";
+    setStatus(`未检测到 ${name}。请确保已安装钱包插件。`, "error");
+
+    // 打开下载页面
+    const downloadUrls = {
+      metamask: "https://metamask.io/download/",
+      trust: "https://trustwallet.com/browser-extension",
+      tokenpocket: "https://www.tokenpocket.pro/",
+      math: "https://mathwallet.org/",
+      binance: "https://www.bnbchain.org/en/binance-wallet",
+      okx: "https://www.okx.com/web3"
+    };
+    if (downloadUrls[walletType]) {
+      setTimeout(() => {
+        if (confirm(`是否打开 ${name} 下载页面？`)) {
+          window.open(downloadUrls[walletType], "_blank");
+        }
+      }, 100);
     }
-    return;
+    return false;
   }
 
   try {
-    state.browserProvider = new ethers.BrowserProvider(injectedEthereum, "any");
+    // 设置当前使用的 provider
+    window.currentProvider = provider;
+    state.lastWalletType = walletType;
+
+    state.browserProvider = new ethers.BrowserProvider(provider, "any");
     await state.browserProvider.send("eth_requestAccounts", []);
     state.signer = await state.browserProvider.getSigner();
-    state.account = await state.signer.getAddress();
-
     const network = await state.browserProvider.getNetwork();
+
+    state.account = await state.signer.getAddress();
     state.chainId = Number(network.chainId);
 
-    const contractCode = await state.browserProvider.getCode(CONFIG.revenueShare);
-    if (!contractCode || contractCode === "0x") {
-      console.warn(`警告: 合约地址无代码 (网络/地址错误): ${CONFIG.revenueShare}`);
-    }
-
-    state.revenueShare = new ethers.Contract(CONFIG.revenueShare, REVENUE_SHARE_ABI, state.signer);
-    state.rewarder = new ethers.Contract(CONFIG.rewarder, REWARDER_ABI, state.signer);
-
-    const usdtAddr = await state.revenueShare.usdt();
-    const assetAddr = await state.rewarder.assetToken();
-
-    state.usdtAddress = usdtAddr;
-    state.assetAddress = assetAddr;
-    state.usdt = new ethers.Contract(usdtAddr, ERC20_ABI, state.signer);
-    state.asset = new ethers.Contract(assetAddr, ERC20_ABI, state.signer);
-
-    try {
-      state.usdtDecimals = Number(await state.usdt.decimals());
-    } catch (e) {
-      state.usdtDecimals = 18;
-      console.warn("读取 USDT decimals 失败，使用默认值 18");
-    }
-
-    try {
-      state.assetDecimals = Number(await state.asset.decimals());
-    } catch (e) {
-      state.assetDecimals = 18;
-      console.warn("读取 Asset decimals 失败，使用默认值 18");
-    }
-
-    const [adminAddress, usdtSymbol, assetSymbol, productCostBps, rewardBps, assetSourceWallet] = await Promise.all([
-      state.revenueShare.owner().catch(() => ethers.ZeroAddress),
-      state.usdt.symbol().catch(() => "USDT"),
-      state.asset.symbol().catch(() => "ASSET"),
-      state.revenueShare.productCostBps().catch(() => 0n),
-      state.revenueShare.rewardBps().catch(() => 0n),
-      state.rewarder.assetSourceWallet().catch(() => ethers.ZeroAddress)
-    ]);
-
-    state.adminAddress = adminAddress;
-    state.usdtSymbol = usdtSymbol;
-    state.assetSymbol = assetSymbol;
-    state.productCostBps = productCostBps;
-    state.rewardBps = rewardBps;
-
+    // 检查是否为管理员
     const isContractOwner = state.adminAddress !== ethers.ZeroAddress &&
                             state.account.toLowerCase() === state.adminAddress.toLowerCase();
     const allAdmins = getAllAdmins();
@@ -1632,135 +1523,56 @@ async function connectWithWallet(walletType) {
     ui.networkName.textContent = state.chainId === CONFIG.chainId ? CONFIG.chainName : "Chain ID " + state.chainId;
     updateWalletButtonState();
 
+    // 获取绑定的推荐人
     state.boundReferrer = await state.revenueShare.referrerOf(state.account);
     ui.boundReferrer.textContent = state.boundReferrer === ethers.ZeroAddress ? "-" : shortAddress(state.boundReferrer);
-
-    ui.revenueShareAddress.textContent = CONFIG.revenueShare;
-    ui.rewarderAddress.textContent = CONFIG.rewarder;
-    ui.oracleAddress.textContent = CONFIG.oracle;
-    ui.usdtTokenAddress.textContent = state.usdtAddress;
-    ui.assetTokenAddress.textContent = state.assetAddress;
-    ui.assetSourceWallet.textContent = assetSourceWallet;
-    ui.productCostBps.textContent = formatPercentFromBps(productCostBps);
-    ui.rewardBps.textContent = formatPercentFromBps(rewardBps);
 
     await refreshWalletMetrics();
     await refreshPreview();
     renderAdminProducts();
     await reconcileOrders();
+    bindWalletProviderEvents(provider);
     renderOrders();
-
-    if (!state.listenersBound) {
-      state.listenersBound = true;
-      try {
-        injectedEthereum.on("accountsChanged", async (accounts) => {
-          if (!accounts || accounts.length === 0) {
-            disconnectWallet();
-            return;
-          }
-          try {
-            state.signer = state.browserProvider.getSigner();
-            state.account = await state.signer.getAddress();
-            state.revenueShare = new ethers.Contract(CONFIG.revenueShare, REVENUE_SHARE_ABI, state.signer);
-            state.rewarder = new ethers.Contract(CONFIG.rewarder, REWARDER_ABI, state.signer);
-            const usdtAddr = await state.revenueShare.usdt();
-            const assetAddr = await state.rewarder.assetToken();
-            state.usdt = new ethers.Contract(usdtAddr, ERC20_ABI, state.signer);
-            state.asset = new ethers.Contract(assetAddr, ERC20_ABI, state.signer);
-            ui.walletAddress.textContent = shortAddress(state.account);
-            await refreshWalletMetrics();
-            await refreshPreview();
-            renderOrders();
-            console.log("账号已切换，状态已刷新");
-          } catch (e) {
-            console.error("切换账号后刷新失败:", e);
-          }
-        });
-
-        injectedEthereum.on("chainChanged", async () => {
-          try {
-            const network = await state.browserProvider.getNetwork();
-            state.chainId = Number(network.chainId);
-            ui.networkName.textContent = state.chainId === CONFIG.chainId ? CONFIG.chainName : "Chain ID " + state.chainId;
-            if (state.account) {
-              await refreshWalletMetrics();
-              await refreshPreview();
-            }
-            console.log("网络已切换，状态已刷新");
-          } catch (e) {
-            console.error("切换网络后刷新失败:", e);
-          }
-        });
-      } catch (e) {
-        // ignore listener errors
-      }
-    }
 
     const name = WALLET_CONFIG[walletType]?.name || "钱包";
     setStatus(`${name} 连接成功。`, "ok");
-    console.log(`钱包已连接: ${state.account}`);
-    console.log(`当前合约: ${CONFIG.revenueShare}`);
+    return true;
   } catch (error) {
     console.error(error);
     setStatus("连接钱包失败: " + extractError(error), "error");
+    return false;
   }
-}
-
-function disconnectWallet() {
-  state.browserProvider = null;
-  state.signer = null;
-  state.account = null;
-  state.chainId = null;
-  state.isAdmin = false;
-  state.revenueShare = null;
-  state.rewarder = null;
-  state.usdt = null;
-  state.asset = null;
-  state.usdtAddress = null;
-  state.assetAddress = null;
-  state.boundReferrer = ethers.ZeroAddress;
-  state.lastPreviewReward = 0n;
-  state.lastSplitPreview = null;
-
-  ui.walletAddress.textContent = "未连接";
-  ui.networkName.textContent = "未知";
-  ui.boundReferrer.textContent = "-";
-  ui.usdtBalance.textContent = "-";
-  ui.usdtAllowance.textContent = "-";
-  updateWalletButtonState();
-  setBuyPending(false);
-  resetPreview();
-  renderAdminProducts();
-  renderOrders();
-
-  console.log("已断开连接（已清空状态）");
-  setStatus("已断开连接", "warn");
 }
 
 // 保持向后兼容的通用连接函数
 async function connectWallet() {
-  const injectedEthereum = getInjectedEthereum();
-  if (!injectedEthereum) {
-    if (isFileProtocol()) {
-      setStatus("未检测到钱包。你当前可能是直接用 file:// 打开的页面，请改用本地 HTTP 服务，或在钱包扩展里开启"允许访问文件网址"。", "error");
-    } else {
-      setStatus("未检测到浏览器钱包。请先安装 MetaMask、OKX Wallet、Trust Wallet 等插件。", "error");
-    }
+  const providers = getInjectedProviders();
+  if (!providers.length) {
+    setStatus(getNoWalletMessage(), "error");
     return;
   }
 
-  await connectWithWallet("injected");
+  const preferredWalletType = getPreferredWalletType() || "injected";
+  const connected = await connectWithWallet(preferredWalletType);
+  if (connected) {
+    return;
+  }
+
+  if (providers.length > 1) {
+    showWalletModal();
+    setStatus("已检测到多个钱包，可直接连接首选钱包；若需切换，请在弹窗中手动选择。", "warn");
+  }
 }
 
 async function switchToBsc() {
-  const injectedEthereum = getInjectedEthereum();
-  if (!injectedEthereum) {
+  const provider = window.currentProvider || window.ethereum;
+  if (!provider) {
     setStatus("需要钱包才能切换网络。", "error");
     return;
   }
 
   try {
-    await injectedEthereum.request({
+    await provider.request({
       method: "wallet_switchEthereumChain",
       params: [{ chainId: CONFIG.chainIdHex }]
     });
@@ -1768,7 +1580,7 @@ async function switchToBsc() {
   } catch (error) {
     if (error.code === 4902) {
       try {
-        await injectedEthereum.request({
+        await provider.request({
           method: "wallet_addEthereumChain",
           params: [{
             chainId: CONFIG.chainIdHex,
@@ -1838,6 +1650,20 @@ function setBuyPending(isPending) {
 
   ui.buyBtn.disabled = isPending;
   ui.buyBtn.textContent = isPending ? "购买处理中..." : "立即购买";
+}
+
+function bindWalletProviderEvents(provider) {
+  if (state.activeWalletProvider && state.activeWalletProvider.removeListener) {
+    state.activeWalletProvider.removeListener("accountsChanged", handleAccountsChanged);
+    state.activeWalletProvider.removeListener("chainChanged", handleChainChanged);
+  }
+
+  state.activeWalletProvider = provider || null;
+
+  if (provider && provider.on) {
+    provider.on("accountsChanged", handleAccountsChanged);
+    provider.on("chainChanged", handleChainChanged);
+  }
 }
 
 async function getSplitPreview(usdtAmount) {
@@ -2403,6 +2229,38 @@ async function ensureBsc() {
   const network = await state.browserProvider.getNetwork();
   if (Number(network.chainId) !== CONFIG.chainId) {
     throw new Error("请将钱包切换到 BSC 主网。");
+  }
+}
+
+async function handleAccountsChanged(accounts) {
+  if (!accounts.length) {
+    bindWalletProviderEvents(null);
+    state.signer = null;
+    state.account = null;
+    state.chainId = null;
+    state.isAdmin = false;
+    state.lastWalletType = null;
+    state.lastSplitPreview = null;
+    ui.walletAddress.textContent = "未连接";
+    ui.networkName.textContent = "已断开";
+    ui.boundReferrer.textContent = "-";
+    updateWalletButtonState();
+    setBuyPending(false);
+    await refreshWalletMetrics();
+    resetPreview();
+    renderAdminProducts();
+    renderOrders();
+    setStatus("钱包已断开。", "warn");
+    return;
+  }
+  const reconnectType = state.lastWalletType || "injected";
+  await connectWithWallet(reconnectType);
+}
+
+async function handleChainChanged() {
+  if (state.browserProvider && state.signer) {
+    const reconnectType = state.lastWalletType || "injected";
+    await connectWithWallet(reconnectType);
   }
 }
 
