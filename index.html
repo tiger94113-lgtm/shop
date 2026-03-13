@@ -8,23 +8,20 @@
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🛒</text></svg>" />
   <style>
     :root {
-      --bg: #0a0e1a;
-      --panel: rgba(15, 23, 42, 0.95);
-      --panel-strong: rgba(30, 41, 59, 0.95);
-      --panel-soft: rgba(30, 41, 59, 0.5);
-      --line: rgba(148, 163, 184, 0.2);
-      --text: #f8fafc;
-      --muted: #94a3b8;
-      --accent: #10b981;
-      --accent-2: #3b82f6;
-      --accent-3: #8b5cf6;
-      --accent-4: #f59e0b;
-      --warn: #fbbf24;
-      --danger: #ef4444;
-      --success: #10b981;
-      --shadow: 0 25px 60px rgba(0, 0, 0, 0.4);
-      --shadow-soft: 0 12px 32px rgba(0, 0, 0, 0.25);
-      --shadow-glow: 0 0 40px rgba(16, 185, 129, 0.15);
+      --bg: #06101c;
+      --panel: rgba(11, 23, 39, 0.82);
+      --panel-strong: rgba(20, 36, 59, 0.92);
+      --panel-soft: rgba(17, 32, 52, 0.58);
+      --line: rgba(148, 163, 184, 0.16);
+      --text: #edf5ff;
+      --muted: #97abc4;
+      --accent: #4df0bc;
+      --accent-2: #69a1ff;
+      --accent-3: #7a7cff;
+      --warn: #ffcc66;
+      --danger: #ff6f91;
+      --shadow: 0 30px 80px rgba(0, 0, 0, 0.35);
+      --shadow-soft: 0 16px 40px rgba(0, 0, 0, 0.22);
     }
 
     * { box-sizing: border-box; }
@@ -32,13 +29,13 @@
     body {
       margin: 0;
       min-height: 100vh;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Inter", sans-serif;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
       color: var(--text);
       background:
-        radial-gradient(circle at 10% 0%, rgba(59, 130, 246, 0.18), transparent 45%),
-        radial-gradient(circle at 90% 0%, rgba(16, 185, 129, 0.15), transparent 40%),
-        radial-gradient(circle at 50% 100%, rgba(139, 92, 246, 0.1), transparent 50%),
-        linear-gradient(180deg, #0a0e1a 0%, #0f172a 50%, #0a0e1a 100%);
+        radial-gradient(circle at top left, rgba(105, 161, 255, 0.24), transparent 32%),
+        radial-gradient(circle at top right, rgba(77, 240, 188, 0.18), transparent 28%),
+        radial-gradient(circle at 30% 80%, rgba(122, 124, 255, 0.12), transparent 30%),
+        linear-gradient(180deg, #06101c 0%, #081320 44%, #091724 100%);
       overflow-x: hidden;
     }
 
@@ -79,25 +76,23 @@
 
     .hero, .card {
       border: 1px solid var(--line);
-      border-radius: 24px;
+      border-radius: 28px;
       background: var(--panel);
       box-shadow: var(--shadow);
-      backdrop-filter: blur(20px);
-      -webkit-backdrop-filter: blur(20px);
-      transition: all 0.3s ease;
+      backdrop-filter: blur(12px);
     }
 
     .hero {
       display: grid;
       grid-template-columns: 1.25fr 0.75fr;
       gap: 28px;
-      padding: 36px;
+      padding: 34px;
       margin-bottom: 26px;
       position: relative;
       overflow: hidden;
       background:
-        linear-gradient(135deg, rgba(59, 130, 246, 0.15), transparent 40%),
-        linear-gradient(225deg, rgba(16, 185, 129, 0.12), transparent 35%),
+        linear-gradient(135deg, rgba(105, 161, 255, 0.12), transparent 35%),
+        linear-gradient(225deg, rgba(77, 240, 188, 0.09), transparent 30%),
         var(--panel);
     }
 
@@ -254,80 +249,55 @@
 
     input, textarea, select {
       width: 100%;
-      padding: 14px 18px;
-      border: 1px solid rgba(148, 163, 184, 0.3);
-      border-radius: 12px;
-      background: rgba(15, 23, 42, 0.85);
+      padding: 14px 16px;
+      border: 1px solid rgba(148, 163, 184, 0.24);
+      border-radius: 14px;
+      background: rgba(5, 14, 24, 0.85);
       color: var(--text);
       outline: none;
       font-size: 15px;
       font-family: inherit;
-      transition: all 0.2s ease;
     }
 
     textarea { min-height: 80px; resize: vertical; }
 
     input:focus, textarea:focus, select:focus {
-      border-color: rgba(16, 185, 129, 0.6);
-      box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.15);
-      background: rgba(15, 23, 42, 0.95);
+      border-color: rgba(74, 139, 255, 0.8);
+      box-shadow: 0 0 0 4px rgba(74, 139, 255, 0.15);
     }
 
     button {
       border: 0;
-      border-radius: 14px;
-      padding: 13px 22px;
+      border-radius: 16px;
+      padding: 14px 20px;
       font-size: 15px;
       font-weight: 600;
       cursor: pointer;
-      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-      letter-spacing: -0.01em;
-      -webkit-tap-highlight-color: transparent;
-      touch-action: manipulation;
-    }
-
-    @media (hover: none) and (pointer: coarse) {
-      button {
-        min-height: 48px;
-        min-width: 48px;
-      }
+      transition: transform 0.18s ease, opacity 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
     }
 
     button:hover:not(:disabled) {
-      transform: translateY(-1px) scale(1.02);
-      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.3);
-    }
-    button:active:not(:disabled) {
-      transform: translateY(0) scale(0.98);
+      transform: translateY(-2px);
+      box-shadow: 0 18px 38px rgba(0, 0, 0, 0.24);
     }
     button:disabled { opacity: 0.5; cursor: not-allowed; }
 
     .primary {
-      background: linear-gradient(135deg, var(--accent) 0%, #34d399 100%);
-      color: #064e3b;
-      box-shadow: 0 10px 30px rgba(16, 185, 129, 0.35);
-    }
-    .primary:hover:not(:disabled) {
-      box-shadow: 0 16px 40px rgba(16, 185, 129, 0.45);
+      background: linear-gradient(135deg, var(--accent), #8cf7d8);
+      color: #042017;
+      box-shadow: 0 16px 40px rgba(51, 214, 166, 0.24);
     }
 
     .secondary {
-      background: linear-gradient(135deg, var(--accent-2) 0%, #60a5fa 100%);
-      color: #1e3a5f;
-      box-shadow: 0 10px 30px rgba(59, 130, 246, 0.35);
-    }
-    .secondary:hover:not(:disabled) {
-      box-shadow: 0 16px 40px rgba(59, 130, 246, 0.45);
+      background: linear-gradient(135deg, var(--accent-2), #8ab3ff);
+      color: #09131f;
+      box-shadow: 0 16px 40px rgba(74, 139, 255, 0.22);
     }
 
     .ghost {
-      background: rgba(148, 163, 184, 0.08);
+      background: rgba(148, 163, 184, 0.07);
       color: var(--text);
-      border: 1px solid rgba(148, 163, 184, 0.18);
-    }
-    .ghost:hover:not(:disabled) {
-      background: rgba(148, 163, 184, 0.12);
-      border-color: rgba(148, 163, 184, 0.25);
+      border: 1px solid rgba(148, 163, 184, 0.12);
     }
 
     .cta-row {
@@ -345,15 +315,10 @@
     }
 
     .stat {
-      padding: 20px;
-      border-radius: 16px;
-      background: linear-gradient(135deg, rgba(30, 41, 59, 0.9), rgba(15, 23, 42, 0.85));
-      border: 1px solid rgba(148, 163, 184, 0.18);
-      transition: all 0.2s ease;
-    }
-    .stat:hover {
-      border-color: rgba(148, 163, 184, 0.3);
-      transform: translateY(-2px);
+      padding: 18px;
+      border-radius: 20px;
+      background: linear-gradient(180deg, rgba(22, 39, 62, 0.82), rgba(13, 24, 39, 0.76));
+      border: 1px solid rgba(148, 163, 184, 0.12);
     }
 
     .stat strong {
@@ -475,28 +440,24 @@
     .product-card {
       position: relative;
       overflow: hidden;
-      border-radius: 20px;
-      border: 1px solid rgba(148, 163, 184, 0.18);
+      border-radius: 22px;
+      border: 1px solid rgba(148, 163, 184, 0.12);
       background:
-        linear-gradient(180deg, rgba(30, 41, 59, 0.85), rgba(15, 23, 42, 0.92));
-      padding: 20px;
+        linear-gradient(180deg, rgba(20, 36, 59, 0.78), rgba(10, 20, 34, 0.88));
+      padding: 18px;
       box-shadow: var(--shadow-soft);
-      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      transition: transform 0.22s ease, border-color 0.22s ease, box-shadow 0.22s ease;
     }
 
     .product-card:hover {
-      transform: translateY(-6px) scale(1.02);
-      border-color: rgba(16, 185, 129, 0.4);
-      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.35);
-    }
-
-    .product-card:active {
-      transform: translateY(-2px) scale(0.98);
+      transform: translateY(-4px);
+      border-color: rgba(77, 240, 188, 0.28);
+      box-shadow: 0 24px 50px rgba(0, 0, 0, 0.25);
     }
 
     .product-card.active {
-      border-color: rgba(16, 185, 129, 0.5);
-      box-shadow: 0 20px 40px rgba(16, 185, 129, 0.2), var(--shadow-glow);
+      border-color: rgba(77, 240, 188, 0.38);
+      box-shadow: 0 24px 54px rgba(77, 240, 188, 0.12);
     }
 
     .product-cover {
@@ -897,14 +858,14 @@
     .modal {
       background: var(--panel);
       border: 1px solid var(--line);
-      border-radius: 24px;
+      border-radius: 28px;
       padding: 28px;
-      width: min(440px, 90vw);
+      width: min(420px, 90vw);
       max-height: 80vh;
       overflow-y: auto;
       box-shadow: var(--shadow);
       transform: scale(0.9);
-      transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      transition: transform 0.3s;
     }
 
     .modal-overlay.active .modal {
@@ -949,26 +910,19 @@
       display: flex;
       align-items: center;
       gap: 14px;
-      padding: 18px 16px;
-      border-radius: 16px;
-      background: linear-gradient(135deg, rgba(30, 41, 59, 0.85), rgba(15, 23, 42, 0.85));
-      border: 1px solid rgba(148, 163, 184, 0.18);
+      padding: 16px;
+      border-radius: 18px;
+      background: linear-gradient(180deg, rgba(20, 36, 59, 0.72), rgba(12, 24, 40, 0.72));
+      border: 1px solid rgba(148, 163, 184, 0.1);
       cursor: pointer;
-      transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+      transition: all 0.2s;
       position: relative;
-      -webkit-tap-highlight-color: transparent;
-      touch-action: manipulation;
-    }
-
-    .wallet-option:active {
-      transform: translateX(2px) scale(0.98);
     }
 
     .wallet-option:hover {
-      background: rgba(16, 185, 129, 0.08);
-      border-color: rgba(16, 185, 129, 0.4);
-      transform: translateX(4px) scale(1.01);
-      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+      background: rgba(51, 214, 166, 0.1);
+      border-color: rgba(51, 214, 166, 0.3);
+      transform: translateX(4px);
     }
 
     .wallet-option.disabled {
@@ -1030,12 +984,10 @@
 
     .wallet-tag {
       font-size: 11px;
-      font-weight: 600;
-      padding: 4px 10px;
-      border-radius: 999px;
-      background: rgba(16, 185, 129, 0.12);
+      padding: 4px 8px;
+      border-radius: 6px;
+      background: rgba(51, 214, 166, 0.15);
       color: var(--accent);
-      border: 1px solid rgba(16, 185, 129, 0.25);
     }
 
     .wallet-divider {
@@ -1066,151 +1018,6 @@
 
       .hero-stat-grid {
         grid-template-columns: 1fr;
-      }
-    }
-
-    @media (max-width: 640px) {
-      .page {
-        padding: 16px 0 40px;
-        width: min(100% - 24px, 1240px);
-      }
-
-      .hero {
-        padding: 24px;
-        gap: 20px;
-      }
-
-      .hero h1 {
-        font-size: 28px;
-      }
-
-      .hero p {
-        font-size: 14px;
-      }
-
-      .hero-actions {
-        flex-direction: column;
-        gap: 10px;
-      }
-
-      .hero-actions button {
-        width: 100%;
-        text-align: center;
-      }
-
-      .card {
-        padding: 20px;
-      }
-
-      .product-card {
-        padding: 16px;
-      }
-
-      .product-cover {
-        height: 120px;
-      }
-
-      .product-card h3 {
-        font-size: 18px;
-      }
-
-      .product-card p {
-        font-size: 13px;
-        min-height: 40px;
-      }
-
-      .product-price strong {
-        font-size: 22px;
-      }
-
-      .cta-row {
-        flex-direction: column;
-        gap: 10px;
-      }
-
-      .cta-row button {
-        width: 100%;
-        text-align: center;
-      }
-
-      input, textarea, select {
-        padding: 12px 16px;
-        font-size: 14px;
-      }
-
-      .modal {
-        padding: 24px;
-        width: min(95vw, 440px);
-      }
-
-      .wallet-option {
-        padding: 16px 14px;
-      }
-
-      .stats {
-        gap: 12px;
-      }
-
-      .stat {
-        padding: 16px;
-      }
-
-      .stat strong {
-        font-size: 18px;
-      }
-
-      .hero-stat {
-        padding: 14px;
-      }
-
-      .hero-stat strong {
-        font-size: 16px;
-      }
-
-      .list .row {
-        padding: 12px 14px;
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 8px;
-      }
-
-      .list .row span:first-child {
-        font-size: 12px;
-      }
-
-      .list .row code, .list .row strong {
-        font-size: 13px;
-      }
-    }
-
-    @media (max-width: 480px) {
-      .hero h1 {
-        font-size: 24px;
-      }
-
-      .hero p {
-        font-size: 13px;
-      }
-
-      .product-card h3 {
-        font-size: 16px;
-      }
-
-      .product-card p {
-        font-size: 12px;
-        min-height: 36px;
-      }
-
-      .product-cover {
-        height: 100px;
-      }
-
-      .card {
-        padding: 16px;
-      }
-
-      .modal {
-        padding: 20px;
       }
     }
   </style>
@@ -1601,15 +1408,6 @@
       </h3>
       <div class="wallet-list">
         <!-- 浏览器插件钱包 -->
-        <div class="wallet-option" data-wallet="tokenpocket">
-          <div class="wallet-icon">👛</div>
-          <div class="wallet-info">
-            <div class="wallet-name">TokenPocket</div>
-            <div class="wallet-desc">多链钱包，支持 BSC</div>
-          </div>
-          <span class="wallet-tag">推荐</span>
-        </div>
-
         <div class="wallet-option" data-wallet="metamask">
           <div class="wallet-icon">🦊</div>
           <div class="wallet-info">
@@ -1620,12 +1418,20 @@
         </div>
 
         <div class="wallet-option" data-wallet="trust">
-          <div class="wallet-icon">�</div>
+          <div class="wallet-icon">🔵</div>
           <div class="wallet-info">
             <div class="wallet-name">Trust Wallet</div>
             <div class="wallet-desc">Binance 官方钱包</div>
           </div>
           <span class="wallet-tag">BSC</span>
+        </div>
+
+        <div class="wallet-option" data-wallet="tokenpocket">
+          <div class="wallet-icon">👛</div>
+          <div class="wallet-info">
+            <div class="wallet-name">TokenPocket</div>
+            <div class="wallet-desc">多链钱包，支持 BSC</div>
+          </div>
         </div>
 
         <div class="wallet-option" data-wallet="math">
@@ -1675,7 +1481,7 @@
   </div>
 
   <!-- Ethers.js -->
-  <script src="ethers.umd.min.js"></script>
+  <script src="./ethers.umd.min.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
