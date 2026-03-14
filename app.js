@@ -26,6 +26,7 @@ const CONFIG = {
   // 管理员钱包地址列表 - 可以添加多个管理员
   // 这些地址将拥有查看和管理所有订单的权限
   adminWallets: [
+    "0xBD4a75F7c4F8Caab8ba78e367790CA585bcC44F5",
     // 示例格式（请替换为实际地址）:
     // "0x1234567890123456789012345678901234567890",
     // "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd",
@@ -302,6 +303,23 @@ function setActivePage(page, options = {}) {
   if (!options.preserveScroll) {
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
+}
+
+function bindProductSelectButtons(container) {
+  if (!container) return;
+
+  container.querySelectorAll("[data-select-product]").forEach((button) => {
+    button.addEventListener("click", () => {
+      setSelectedProduct(button.getAttribute("data-select-product"));
+      const current = getSelectedProduct();
+      if (state.activePage === "home" || state.activePage === "mall") {
+        setActivePage("purchase");
+        setStatus(current ? "已选择商品: " + current.name + "，请继续填写订单信息。" : "商品已切换。", "ok");
+        return;
+      }
+      setStatus(current ? "已选择商品: " + current.name : "商品已切换。", "ok");
+    });
+  });
 }
 
 function shortAddress(value) {
@@ -1263,14 +1281,19 @@ function exportOrders(format = "csv", scope = "visible") {
 }
 
 function renderProducts() {
-  if (!ui.productGrid) return;
+  if (!ui.productGrid && !ui.mallProductGrid) return;
 
   const activeProducts = getActiveProducts();
   renderHomeCategories();
   renderPromoBanner();
 
   if (!activeProducts.length) {
-    ui.productGrid.innerHTML = '<div class="muted">暂无可售商品，请管理员先创建商品。</div>';
+    if (ui.productGrid) {
+      ui.productGrid.innerHTML = '<div class="muted">暂无可售商品，请管理员先创建商品。</div>';
+    }
+    if (ui.mallProductGrid) {
+      ui.mallProductGrid.innerHTML = '<div class="muted">暂无可售商品，请管理员先创建商品。</div>';
+    }
     state.selectedProductId = null;
     fillAmountFromSelectedProduct();
     updateSelectedProductSummary();
@@ -1283,14 +1306,19 @@ function renderProducts() {
 
   const productsToRender = getFilteredHomeProducts();
   if (!productsToRender.length) {
-    ui.productGrid.innerHTML = '<div class="muted">没有找到匹配商品，请更换关键词或切换专区。</div>';
+    if (ui.productGrid) {
+      ui.productGrid.innerHTML = '<div class="muted">没有找到匹配商品，请更换关键词或切换专区。</div>';
+    }
+    if (ui.mallProductGrid) {
+      ui.mallProductGrid.innerHTML = '<div class="muted">没有找到匹配商品，请更换关键词或切换专区。</div>';
+    }
     fillAmountFromSelectedProduct();
     updateSelectedProductSummary();
     return;
   }
 
-  ui.productGrid.innerHTML = productsToRender.map((product) => {
-    const isHomePage = state.activePage === "home";
+  const cardsHtml = productsToRender.map((product) => {
+    const isMallStylePage = state.activePage === "home" || state.activePage === "mall";
     const imageHtml = /^https?:\/\//i.test(product.image)
       ? '<img src="' + escapeHtml(product.image) + '" alt="' + escapeHtml(product.name) + '">'
       : escapeHtml(product.image || "🛍️");
@@ -1314,7 +1342,7 @@ function renderProducts() {
           '<div class="product-meta">' +
             priceBlock +
             '<button class="' + (product.id === state.selectedProductId ? 'primary' : 'ghost') + ' product-select-btn" data-select-product="' + escapeHtml(product.id) + '">' +
-              (product.id === state.selectedProductId ? (isHomePage ? "前往购买" : "已选择") : (isHomePage ? "选择并购买" : "选择商品")) +
+              (product.id === state.selectedProductId ? (isMallStylePage ? "前往购买" : "已选择") : (isMallStylePage ? "选择并购买" : "选择商品")) +
             '</button>' +
           '</div>' +
           '<div class="product-card-stats">' +
@@ -1326,18 +1354,14 @@ function renderProducts() {
     );
   }).join("");
 
-  ui.productGrid.querySelectorAll("[data-select-product]").forEach((button) => {
-    button.addEventListener("click", () => {
-      setSelectedProduct(button.getAttribute("data-select-product"));
-      const current = getSelectedProduct();
-      if (state.activePage === "home") {
-        setActivePage("purchase");
-        setStatus(current ? "已选择商品: " + current.name + "，请继续填写订单信息。" : "商品已切换。", "ok");
-        return;
-      }
-      setStatus(current ? "已选择商品: " + current.name : "商品已切换。", "ok");
-    });
-  });
+  if (ui.productGrid) {
+    ui.productGrid.innerHTML = cardsHtml;
+    bindProductSelectButtons(ui.productGrid);
+  }
+  if (ui.mallProductGrid) {
+    ui.mallProductGrid.innerHTML = cardsHtml;
+    bindProductSelectButtons(ui.mallProductGrid);
+  }
 
   fillAmountFromSelectedProduct();
   updateSelectedProductSummary();
@@ -2582,7 +2606,7 @@ function initUI() {
     "menuBtn", "drawerOverlay", "closeDrawerBtn", "homeSearchInput", "categoryGrid", "promoTrack", "promoDots",
     "amountInput", "slippageInput", "referrerInput",
     "pageNav", "tradeGrid",
-    "productGrid", "selectedProductBox", "selectedProductName", "selectedProductTag", "selectedProductDesc",
+    "productGrid", "mallProductGrid", "selectedProductBox", "selectedProductName", "selectedProductTag", "selectedProductDesc",
     "selectedProductPrice", "selectedProductOriginalPrice", "selectedProductDiscount", "selectedProductSku", "adminProductsSection", "productAdminList", "productStatusBox",
     "productNameInput", "productOriginalPriceInput", "productPriceInput", "productTagInput", "productImageInput", "productDescriptionInput",
     "saveProductBtn", "resetProductBtn",
