@@ -24,6 +24,81 @@
       --shadow-soft: 0 16px 40px rgba(0, 0, 0, 0.22);
     }
 
+    .nav {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 14px 18px;
+      margin-bottom: 18px;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: var(--panel-strong);
+      box-shadow: var(--shadow-soft);
+      backdrop-filter: blur(14px);
+    }
+
+    .nav-left {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+    }
+
+    .nav-dot {
+      width: 34px;
+      height: 34px;
+      border-radius: 10px;
+      display: grid;
+      place-items: center;
+      background: linear-gradient(135deg, rgba(77, 240, 188, 0.25), rgba(105, 161, 255, 0.25));
+      color: #0b1828;
+      font-weight: 800;
+    }
+
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .nav-link {
+      padding: 9px 12px;
+      border-radius: 12px;
+      color: var(--muted);
+      font-weight: 600;
+      border: 1px solid transparent;
+      transition: all 0.15s ease;
+    }
+
+    .nav-link:hover {
+      color: var(--text);
+      border-color: var(--line);
+      background: rgba(148, 163, 184, 0.06);
+    }
+
+    .nav-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    @media (max-width: 720px) {
+      .nav {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+      .nav-actions {
+        width: 100%;
+        justify-content: space-between;
+      }
+    }
+
     * { box-sizing: border-box; }
 
     body {
@@ -1024,8 +1099,26 @@
 </head>
 <body>
   <div class="page">
+    <header class="nav">
+      <div class="nav-left">
+        <div class="nav-dot">AM</div>
+        <div>
+          <div style="font-size: 15px;">Asset Mall</div>
+          <div style="color: var(--muted); font-size: 12px;">USDT 收益分享</div>
+        </div>
+      </div>
+      <nav class="nav-links">
+        <a class="nav-link" href="#products">商品</a>
+        <a class="nav-link" href="#checkout">购买</a>
+        <a class="nav-link" href="#orders">订单</a>
+      </nav>
+      <div class="nav-actions">
+        <button class="ghost" id="copyRefLinkBtn">复制推荐链接</button>
+        <button class="secondary" id="connectBtn">连接钱包</button>
+      </div>
+    </header>
     <!-- Hero Section -->
-    <section class="hero">
+    <section class="hero" id="top">
       <div>
         <div class="pill"><span class="dot"></span>BSC Mainnet</div>
         <h1>Asset Mall</h1>
@@ -1052,9 +1145,8 @@
           </div>
         </div>
         <div class="hero-actions">
-          <button class="secondary" id="connectBtn">连接钱包</button>
-          <button class="ghost" id="switchBtn">切换到 BSC</button>
-          <button class="ghost" id="copyRefLinkBtn">复制推荐链接</button>
+          <button class="secondary" id="switchBtn">切换到 BSC</button>
+          <button class="ghost" onclick="window.scrollTo({top: document.getElementById('checkout').offsetTop - 20, behavior: 'smooth'});">开始购买</button>
         </div>
       </div>
       <div class="hero-side">
@@ -1074,7 +1166,7 @@
     </section>
 
     <!-- Main Grid -->
-    <section class="section">
+    <section class="section" id="products">
       <div class="card">
         <div class="section-head">
           <div>
@@ -1089,7 +1181,7 @@
       </div>
     </section>
 
-    <section class="grid">
+    <section class="grid" id="checkout">
       <!-- Buy Card -->
       <div class="card">
         <h2>购买资产</h2>
@@ -1308,7 +1400,7 @@
     </section>
 
     <!-- Orders Section -->
-    <section class="section admin-grid">
+    <section class="section admin-grid" id="orders">
       <div class="card">
         <h2>订单中心</h2>
         <p class="desc">
