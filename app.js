@@ -81,6 +81,10 @@ const state = {
   account: null,
   chainId: null,
   activePage: "home",
+  homeSearchQuery: "",
+  activeCategory: "all",
+  bannerIndex: 0,
+  bannerTimer: null,
   lastWalletType: null,
   activeWalletProvider: null,
   isSubmitting: false,
@@ -108,6 +112,8 @@ const state = {
 
 // UI 元素引用
 const ui = {};
+
+const HOME_CATEGORY_ICONS = ["✦", "◎", "◈", "✿", "◆", "⬢", "◉", "☼"];
 
 // 存储键
 const STORAGE_KEY = "assetMallOrdersV1";
@@ -283,6 +289,7 @@ function setActivePage(page, options = {}) {
     state.activePage = "home";
     updatePageView();
     renderProducts();
+    toggleDrawer(false);
     setStatus("连接管理员钱包后可进入管理后台。", "warn");
     return;
   }
@@ -290,9 +297,10 @@ function setActivePage(page, options = {}) {
   state.activePage = page || "home";
   updatePageView();
   renderProducts();
+  toggleDrawer(false);
 
-  if (!options.preserveScroll && ui.pageNav) {
-    ui.pageNav.scrollIntoView({ behavior: "smooth", block: "start" });
+  if (!options.preserveScroll) {
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 }
 
@@ -778,6 +786,170 @@ function getSelectedProduct() {
   return state.products.find((product) => product.id === state.selectedProductId) || null;
 }
 
+function getHomeCategories() {
+  const activeProducts = getActiveProducts();
+  const categories = [
+    { id: "all", label: "首页", icon: "⌂" }
+  ];
+
+  if (activeProducts.some((product) => getProductDiscountPercent(product) > 0)) {
+    categories.push({ id: "discount", label: "折扣专区", icon: "🏷" });
+  }
+
+  const uniqueTags = [...new Set(
+    activeProducts
+      .map((product) => String(product.tag || "").trim())
+      .filter(Boolean)
+  )].slice(0, 7);
+
+  uniqueTags.forEach((tag, index) => {
+    categories.push({
+      id: "tag:" + tag.toLowerCase(),
+      label: tag,
+      icon: HOME_CATEGORY_ICONS[index % HOME_CATEGORY_ICONS.length]
+    });
+  });
+
+  return categories;
+}
+
+function matchesHomeCategory(product) {
+  if (state.activeCategory === "all") return true;
+  if (state.activeCategory === "discount") {
+    return getProductDiscountPercent(product) > 0;
+  }
+  if (state.activeCategory.startsWith("tag:")) {
+    return String(product.tag || "").trim().toLowerCase() === state.activeCategory.slice(4);
+  }
+  return true;
+}
+
+function getFilteredHomeProducts() {
+  const query = state.homeSearchQuery.trim().toLowerCase();
+  return getActiveProducts().filter((product) => {
+    if (!matchesHomeCategory(product)) return false;
+    if (!query) return true;
+
+    const haystack = [
+      product.name,
+      product.tag,
+      product.description,
+      product.sku
+    ].join(" ").toLowerCase();
+
+    return haystack.includes(query);
+  });
+}
+
+function renderHomeCategories() {
+  if (!ui.categoryGrid) return;
+
+  const categories = getHomeCategories();
+  ui.categoryGrid.innerHTML = categories.map((category) => (
+    '<button class="category-card' + (category.id === state.activeCategory ? ' active' : '') + '" data-category-id="' + escapeHtml(category.id) + '">' +
+      '<span class="category-badge">' + escapeHtml(category.icon) + '</span>' +
+      '<span class="category-name">' + escapeHtml(category.label) + '</span>' +
+    '</button>'
+  )).join("");
+
+  ui.categoryGrid.querySelectorAll("[data-category-id]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.activeCategory = button.getAttribute("data-category-id") || "all";
+      renderHomeCategories();
+      renderProducts();
+    });
+  });
+}
+
+function setBannerIndex(index) {
+  const bannerProducts = getActiveProducts().slice(0, 4);
+  if (!bannerProducts.length) {
+    state.bannerIndex = 0;
+    return;
+  }
+
+  const safeIndex = ((index % bannerProducts.length) + bannerProducts.length) % bannerProducts.length;
+  state.bannerIndex = safeIndex;
+  renderPromoBanner();
+}
+
+function renderPromoBanner() {
+  if (!ui.promoTrack || !ui.promoDots) return;
+
+  const bannerProducts = getActiveProducts().slice(0, 4);
+  if (state.bannerTimer) {
+    clearInterval(state.bannerTimer);
+    state.bannerTimer = null;
+  }
+
+  if (!bannerProducts.length) {
+    ui.promoTrack.innerHTML = '<div class="promo-empty">暂无推荐商品</div>';
+    ui.promoDots.innerHTML = "";
+    return;
+  }
+
+  if (state.bannerIndex >= bannerProducts.length) {
+    state.bannerIndex = 0;
+  }
+
+  ui.promoTrack.innerHTML = bannerProducts.map((product, index) => {
+    const priceSummary = getProductPriceSummary(product);
+    const cover = /^https?:\/\//i.test(product.image)
+      ? '<img src="' + escapeHtml(product.image) + '" alt="' + escapeHtml(product.name) + '">'
+      : '<div class="promo-fallback">' + escapeHtml(product.image || "🛍️") + '</div>';
+
+    return (
+      '<article class="promo-slide' + (index === state.bannerIndex ? ' active' : '') + '" data-banner-product="' + escapeHtml(product.id) + '">' +
+        cover +
+        '<div class="promo-copy">' +
+          '<span class="promo-kicker">' + escapeHtml(product.tag || "推荐商品") + '</span>' +
+          '<h3>' + escapeHtml(product.name) + '</h3>' +
+          '<p>' + escapeHtml(product.description || "链上即时下单，自动计算奖励与推荐分账。") + '</p>' +
+          '<div class="promo-price-row">' +
+            '<strong>' + escapeHtml(priceSummary.salePrice) + ' ' + escapeHtml(state.usdtSymbol) + '</strong>' +
+            '<small>' + escapeHtml(priceSummary.hasDiscount ? ('限时优惠 ' + priceSummary.discountPercent + '%') : '链上实时发放') + '</small>' +
+          '</div>' +
+        '</div>' +
+      '</article>'
+    );
+  }).join("");
+
+  ui.promoDots.innerHTML = bannerProducts.map((_, index) => (
+    '<button class="promo-dot' + (index === state.bannerIndex ? ' active' : '') + '" data-banner-dot="' + index + '" aria-label="切换轮播"></button>'
+  )).join("");
+
+  ui.promoDots.querySelectorAll("[data-banner-dot]").forEach((button) => {
+    button.addEventListener("click", () => {
+      setBannerIndex(Number(button.getAttribute("data-banner-dot") || "0"));
+    });
+  });
+  ui.promoTrack.querySelectorAll("[data-banner-product]").forEach((card) => {
+    card.addEventListener("click", () => {
+      const productId = card.getAttribute("data-banner-product");
+      if (!productId) return;
+      setSelectedProduct(productId);
+      setActivePage("purchase");
+      const product = getSelectedProduct();
+      setStatus(product ? "已选择商品: " + product.name + "，请继续填写订单信息。" : "已切换到购买页。", "ok");
+    });
+  });
+
+  state.bannerTimer = window.setInterval(() => {
+    state.bannerIndex = (state.bannerIndex + 1) % bannerProducts.length;
+    renderPromoBanner();
+  }, 4500);
+}
+
+function toggleDrawer(forceOpen) {
+  if (!ui.drawerOverlay) return;
+  const shouldOpen = typeof forceOpen === "boolean"
+    ? forceOpen
+    : !ui.drawerOverlay.classList.contains("active");
+
+  ui.drawerOverlay.classList.toggle("active", shouldOpen);
+  document.body.style.overflow = shouldOpen ? "hidden" : "";
+}
+
 function fillAmountFromSelectedProduct() {
   const product = getSelectedProduct();
   if (!product) {
@@ -1094,6 +1266,9 @@ function renderProducts() {
   if (!ui.productGrid) return;
 
   const activeProducts = getActiveProducts();
+  renderHomeCategories();
+  renderPromoBanner();
+
   if (!activeProducts.length) {
     ui.productGrid.innerHTML = '<div class="muted">暂无可售商品，请管理员先创建商品。</div>';
     state.selectedProductId = null;
@@ -1106,7 +1281,15 @@ function renderProducts() {
     state.selectedProductId = activeProducts[0].id;
   }
 
-  ui.productGrid.innerHTML = activeProducts.map((product) => {
+  const productsToRender = getFilteredHomeProducts();
+  if (!productsToRender.length) {
+    ui.productGrid.innerHTML = '<div class="muted">没有找到匹配商品，请更换关键词或切换专区。</div>';
+    fillAmountFromSelectedProduct();
+    updateSelectedProductSummary();
+    return;
+  }
+
+  ui.productGrid.innerHTML = productsToRender.map((product) => {
     const isHomePage = state.activePage === "home";
     const imageHtml = /^https?:\/\//i.test(product.image)
       ? '<img src="' + escapeHtml(product.image) + '" alt="' + escapeHtml(product.name) + '">'
@@ -1130,6 +1313,10 @@ function renderProducts() {
           '<button class="' + (product.id === state.selectedProductId ? 'primary' : 'ghost') + ' product-select-btn" data-select-product="' + escapeHtml(product.id) + '">' +
             (product.id === state.selectedProductId ? (isHomePage ? "前往购买" : "已选择") : (isHomePage ? "选择并购买" : "选择商品")) +
           '</button>' +
+        '</div>' +
+        '<div class="product-card-stats">' +
+          '<span>SKU<strong>' + escapeHtml(product.sku || "-") + '</strong></span>' +
+          '<span>' + escapeHtml(priceSummary.hasDiscount ? ('立省 ' + priceSummary.discountPercent + '%') : '标准价') + '</span>' +
         '</div>' +
       '</article>'
     );
@@ -1378,7 +1565,8 @@ function markWalletAvailability() {
 
 function updateWalletButtonState() {
   if (!ui.connectBtn) return;
-  ui.connectBtn.textContent = state.account ? `已连接 ${shortAddress(state.account)}` : "连接钱包";
+  ui.connectBtn.textContent = state.account ? shortAddress(state.account) : "连接钱包";
+  ui.connectBtn.title = state.account || "连接钱包";
 }
 
 async function loadContracts() {
@@ -2387,6 +2575,7 @@ function initUI() {
   // 获取所有 UI 元素
   const ids = [
     "connectBtn", "switchBtn", "copyRefLinkBtn", "previewBtn", "approveBtn", "buyBtn",
+    "menuBtn", "drawerOverlay", "closeDrawerBtn", "homeSearchInput", "categoryGrid", "promoTrack", "promoDots",
     "amountInput", "slippageInput", "referrerInput",
     "pageNav", "tradeGrid",
     "productGrid", "selectedProductBox", "selectedProductName", "selectedProductTag", "selectedProductDesc",
@@ -2449,9 +2638,28 @@ async function init() {
     ui.connectBtn.addEventListener("click", connectWallet);
     ui.switchBtn.addEventListener("click", switchToBsc);
     ui.copyRefLinkBtn.addEventListener("click", copyReferralLink);
+    if (ui.menuBtn) {
+      ui.menuBtn.addEventListener("click", () => toggleDrawer(true));
+    }
+    if (ui.closeDrawerBtn) {
+      ui.closeDrawerBtn.addEventListener("click", () => toggleDrawer(false));
+    }
+    if (ui.drawerOverlay) {
+      ui.drawerOverlay.addEventListener("click", (event) => {
+        if (event.target === ui.drawerOverlay) {
+          toggleDrawer(false);
+        }
+      });
+    }
     document.querySelectorAll("[data-view-target]").forEach((tab) => {
       tab.addEventListener("click", () => {
         setActivePage(tab.getAttribute("data-view-target"));
+      });
+    });
+    document.querySelectorAll("[data-drawer-action='copy-ref']").forEach((button) => {
+      button.addEventListener("click", async () => {
+        toggleDrawer(false);
+        await copyReferralLink();
       });
     });
 
@@ -2481,6 +2689,12 @@ async function init() {
     ui.slippageInput.addEventListener("input", refreshPreview);
     ui.orderSearchInput.addEventListener("input", renderOrders);
     ui.orderStatusFilter.addEventListener("change", renderOrders);
+    if (ui.homeSearchInput) {
+      ui.homeSearchInput.addEventListener("input", (event) => {
+        state.homeSearchQuery = event.target.value || "";
+        renderProducts();
+      });
+    }
 
     // 设置初始状态
     ui.networkName.textContent = CONFIG.chainName;
