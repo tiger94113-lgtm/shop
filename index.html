@@ -1086,6 +1086,15 @@
     .wallet-divider::before { left: 0; }
     .wallet-divider::after { right: 0; }
 
+    @media (max-width: 1100px) {
+      .product-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+      .grid, .admin-grid, .admin-panel-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
     @media (max-width: 940px) {
       .hero, .grid, .admin-grid, .admin-panel-grid, .field-grid, .stats, .product-grid {
         grid-template-columns: 1fr;
@@ -1094,6 +1103,24 @@
       .hero-stat-grid {
         grid-template-columns: 1fr;
       }
+      .hero {
+        padding: 24px;
+      }
+    }
+
+    @media (max-width: 720px) {
+      .product-meta { flex-direction: column; align-items: flex-start; }
+      .cta-row, .hero-actions, .nav-actions { width: 100%; }
+      .hero-actions button, .cta-row button, .nav-actions button { width: 100%; }
+      .card, .hero { padding: 20px; }
+    }
+
+    @media (max-width: 540px) {
+      .product-grid { grid-template-columns: 1fr; }
+      .stats { grid-template-columns: 1fr; }
+      .field-grid { grid-template-columns: 1fr; }
+      .nav-dot { width: 30px; height: 30px; }
+      .hero h1 { font-size: clamp(28px, 7vw, 38px); }
     }
   </style>
 </head>
