@@ -478,21 +478,435 @@
       margin-bottom: 6px;
     }
 
+    .app-shell {
+      padding: 14px 0 10px;
+    }
+
+    .app-topbar {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto auto;
+      gap: 10px;
+      align-items: center;
+      min-height: 62px;
+    }
+
+    .app-brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-width: 0;
+    }
+
+    .brand-coin {
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      border: 1px solid rgba(241, 203, 117, 0.64);
+      display: grid;
+      place-items: center;
+      color: #f0d08b;
+      font-size: 22px;
+      font-weight: 800;
+      background: radial-gradient(circle at 30% 30%, rgba(255, 229, 157, 0.18), rgba(22, 18, 9, 0.92));
+      box-shadow: 0 10px 22px rgba(0, 0, 0, 0.35);
+    }
+
+    .brand-copy {
+      display: grid;
+      gap: 2px;
+      min-width: 0;
+    }
+
+    .brand-copy strong {
+      font-size: 20px;
+      color: #fff7df;
+      letter-spacing: 0.01em;
+    }
+
+    .brand-copy span {
+      color: #a99159;
+      font-size: 11px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    .wallet-pill,
+    .menu-pill,
+    .utility-chip {
+      border: 1px solid rgba(220, 186, 107, 0.28);
+      border-radius: 14px;
+      background: linear-gradient(180deg, rgba(28, 22, 13, 0.95), rgba(14, 12, 9, 0.95));
+      color: #f2d591;
+      box-shadow: 0 14px 28px rgba(0, 0, 0, 0.24);
+    }
+
+    .wallet-pill {
+      min-width: 120px;
+      padding: 13px 14px;
+      font-size: 14px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .menu-pill {
+      width: 48px;
+      height: 48px;
+      padding: 0;
+      font-size: 22px;
+      display: grid;
+      place-items: center;
+    }
+
+    .utility-row {
+      display: flex;
+      gap: 10px;
+      margin-top: 14px;
+      overflow-x: auto;
+      padding-bottom: 2px;
+    }
+
+    .utility-chip {
+      padding: 12px 16px;
+      font-size: 13px;
+      white-space: nowrap;
+      color: #e8d4a4;
+    }
+
+    .drawer-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.62);
+      backdrop-filter: blur(3px);
+      z-index: 40;
+      display: none;
+    }
+
+    .drawer-overlay.active {
+      display: block;
+    }
+
+    .side-drawer {
+      width: min(84vw, 340px);
+      height: 100%;
+      padding: 22px 18px 24px;
+      background: linear-gradient(180deg, rgba(32, 27, 17, 0.98), rgba(14, 12, 9, 0.98));
+      border-right: 1px solid rgba(220, 186, 107, 0.18);
+      box-shadow: 26px 0 60px rgba(0, 0, 0, 0.42);
+      transform: translateX(-100%);
+      transition: transform 0.24s ease;
+    }
+
+    .drawer-overlay.active .side-drawer {
+      transform: translateX(0);
+    }
+
+    .drawer-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 18px;
+      padding-bottom: 14px;
+      border-bottom: 1px solid rgba(220, 186, 107, 0.14);
+    }
+
+    .drawer-title {
+      font-size: 22px;
+      color: #fff1c9;
+      font-weight: 800;
+    }
+
+    .drawer-subtitle {
+      margin-top: 4px;
+      font-size: 12px;
+      color: #aa9667;
+    }
+
+    .drawer-close {
+      width: 42px;
+      height: 42px;
+      border-radius: 12px;
+      border: 1px solid rgba(220, 186, 107, 0.18);
+      background: rgba(255, 255, 255, 0.03);
+      color: #f2d591;
+      font-size: 24px;
+      display: grid;
+      place-items: center;
+      cursor: pointer;
+    }
+
+    .drawer-menu {
+      display: grid;
+      gap: 12px;
+    }
+
+    .drawer-item {
+      width: 100%;
+      display: grid;
+      grid-template-columns: 34px minmax(0, 1fr) 16px;
+      gap: 14px;
+      align-items: center;
+      border-radius: 18px;
+      border: 1px solid rgba(220, 186, 107, 0.12);
+      background: rgba(255, 255, 255, 0.03);
+      padding: 14px 14px;
+      color: #f6ead0;
+      font-size: 17px;
+      text-align: left;
+      cursor: pointer;
+    }
+
+    .drawer-item.active {
+      border-color: rgba(220, 186, 107, 0.26);
+      background: rgba(220, 186, 107, 0.09);
+    }
+
+    .drawer-icon {
+      width: 34px;
+      height: 34px;
+      border-radius: 12px;
+      display: grid;
+      place-items: center;
+      background: rgba(220, 186, 107, 0.12);
+      color: #f2d591;
+      font-size: 18px;
+    }
+
+    .drawer-arrow {
+      color: #b9a26a;
+      font-size: 22px;
+      text-align: right;
+    }
+
+    .home-shell {
+      display: grid;
+      gap: 16px;
+      margin-top: 6px;
+    }
+
+    .search-shell {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 0 16px;
+      height: 52px;
+      border-radius: 18px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      box-shadow: var(--shadow-soft);
+    }
+
+    .search-icon {
+      color: #9e8755;
+      font-size: 18px;
+    }
+
+    .search-shell input {
+      border: none;
+      background: transparent;
+      padding: 0;
+      color: #fff3d6;
+      font-size: 15px;
+    }
+
+    .search-shell input::placeholder {
+      color: #7c7262;
+    }
+
+    .promo-carousel,
+    .home-panel {
+      border-radius: 24px;
+      border: 1px solid rgba(220, 186, 107, 0.1);
+      background: linear-gradient(180deg, rgba(18, 16, 12, 0.95), rgba(10, 9, 7, 0.96));
+      box-shadow: var(--shadow-soft);
+      overflow: hidden;
+    }
+
+    .promo-carousel {
+      padding: 14px;
+    }
+
+    .promo-track {
+      position: relative;
+      min-height: 240px;
+    }
+
+    .promo-slide,
+    .promo-empty {
+      border-radius: 20px;
+      overflow: hidden;
+      min-height: 240px;
+      position: relative;
+      display: none;
+      cursor: pointer;
+      background:
+        radial-gradient(circle at top right, rgba(255, 218, 143, 0.24), transparent 34%),
+        linear-gradient(180deg, rgba(69, 47, 18, 0.08), rgba(0, 0, 0, 0.36)),
+        #13110e;
+    }
+
+    .promo-slide.active,
+    .promo-empty {
+      display: block;
+    }
+
+    .promo-slide img {
+      width: 100%;
+      height: 240px;
+      object-fit: cover;
+      display: block;
+      filter: saturate(1.05);
+    }
+
+    .promo-fallback {
+      height: 240px;
+      display: grid;
+      place-items: center;
+      font-size: 84px;
+      color: #ffecc4;
+      background:
+        radial-gradient(circle at 20% 15%, rgba(255, 213, 120, 0.14), transparent 30%),
+        linear-gradient(135deg, rgba(64, 46, 19, 0.96), rgba(15, 13, 10, 0.98));
+    }
+
+    .promo-copy {
+      position: absolute;
+      inset: auto 0 0 0;
+      padding: 18px 18px 20px;
+      background: linear-gradient(180deg, transparent, rgba(0, 0, 0, 0.82));
+    }
+
+    .promo-copy h3 {
+      margin: 8px 0 6px;
+      font-size: 22px;
+      color: #fff2d4;
+    }
+
+    .promo-copy p {
+      margin: 0;
+      color: rgba(255, 241, 207, 0.76);
+      line-height: 1.5;
+      font-size: 13px;
+    }
+
+    .promo-kicker {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: rgba(255, 215, 130, 0.14);
+      color: #f5d898;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .promo-price-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-top: 12px;
+      color: #fff6e2;
+    }
+
+    .promo-price-row strong {
+      font-size: 24px;
+      color: #fff0c7;
+    }
+
+    .promo-price-row small {
+      color: #c7b07a;
+      font-size: 12px;
+    }
+
+    .promo-dots {
+      display: flex;
+      justify-content: center;
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .promo-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.22);
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .promo-dot.active {
+      width: 24px;
+      background: linear-gradient(90deg, #f0d08b, #a58a4d);
+    }
+
+    .home-panel {
+      padding: 18px 16px 20px;
+    }
+
+    .category-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 14px;
+    }
+
+    .category-card {
+      display: grid;
+      gap: 10px;
+      justify-items: center;
+      padding: 12px 8px 10px;
+      border-radius: 18px;
+      border: 1px solid rgba(220, 186, 107, 0.1);
+      background: rgba(255, 255, 255, 0.03);
+      cursor: pointer;
+      text-align: center;
+    }
+
+    .category-card.active {
+      background: rgba(220, 186, 107, 0.09);
+      border-color: rgba(220, 186, 107, 0.24);
+    }
+
+    .category-badge {
+      width: 54px;
+      height: 54px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      background:
+        radial-gradient(circle at 30% 30%, rgba(255, 236, 182, 0.26), transparent 36%),
+        linear-gradient(135deg, rgba(63, 42, 13, 0.95), rgba(18, 15, 11, 0.98));
+      border: 1px solid rgba(220, 186, 107, 0.2);
+      color: #f3d99a;
+      font-size: 22px;
+      box-shadow: 0 12px 24px rgba(0, 0, 0, 0.24);
+    }
+
+    .category-name {
+      font-size: 13px;
+      color: #f8ebcf;
+      line-height: 1.35;
+      word-break: break-word;
+    }
+
     .product-grid {
       display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 18px;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
       margin-top: 18px;
     }
 
     .product-card {
       position: relative;
       overflow: hidden;
-      border-radius: 22px;
-      border: 1px solid rgba(148, 163, 184, 0.12);
-      background:
-        linear-gradient(180deg, rgba(20, 36, 59, 0.78), rgba(10, 20, 34, 0.88));
-      padding: 18px;
+      border-radius: 20px;
+      border: 1px solid rgba(245, 229, 196, 0.12);
+      background: linear-gradient(180deg, #fcf5e8, #fffdf8);
+      padding: 0 0 14px;
       box-shadow: var(--shadow-soft);
       transition: transform 0.22s ease, border-color 0.22s ease, box-shadow 0.22s ease;
     }
@@ -504,24 +918,24 @@
     }
 
     .product-card.active {
-      border-color: rgba(77, 240, 188, 0.38);
-      box-shadow: 0 24px 54px rgba(77, 240, 188, 0.12);
+      border-color: rgba(220, 186, 107, 0.4);
+      box-shadow: 0 22px 48px rgba(201, 160, 70, 0.18);
     }
 
     .product-cover {
-      height: 160px;
-      border-radius: 18px;
+      height: 174px;
+      border-radius: 20px 20px 0 0;
       overflow: hidden;
       background:
-        radial-gradient(circle at top right, rgba(105, 161, 255, 0.38), transparent 38%),
-        linear-gradient(135deg, rgba(77, 240, 188, 0.14), rgba(105, 161, 255, 0.18)),
+        radial-gradient(circle at top right, rgba(255, 226, 158, 0.38), transparent 38%),
+        linear-gradient(135deg, rgba(114, 83, 27, 0.16), rgba(31, 25, 16, 0.18)),
         rgba(255, 255, 255, 0.04);
       display: flex;
       align-items: center;
       justify-content: center;
       font-size: 54px;
-      color: #f3fbff;
-      margin-bottom: 16px;
+      color: #f3e4bf;
+      margin-bottom: 0;
       position: relative;
       isolation: isolate;
     }
@@ -536,16 +950,16 @@
       z-index: -1;
     }
 
-    .product-tag {
+    .product-card .product-tag {
       display: inline-flex;
       align-items: center;
       gap: 8px;
-      padding: 6px 10px;
+      padding: 5px 10px;
       border-radius: 999px;
-      background: rgba(77, 240, 188, 0.12);
-      border: 1px solid rgba(77, 240, 188, 0.16);
-      color: #baf3e3;
-      font-size: 12px;
+      background: rgba(92, 72, 33, 0.08);
+      border: 1px solid rgba(169, 133, 56, 0.14);
+      color: #87661d;
+      font-size: 11px;
       font-weight: 700;
     }
 
@@ -554,6 +968,7 @@
       flex-wrap: wrap;
       gap: 8px;
       align-items: center;
+      padding: 12px 14px 0;
     }
 
     .discount-pill {
@@ -561,61 +976,110 @@
       align-items: center;
       padding: 6px 10px;
       border-radius: 999px;
-      background: rgba(255, 111, 145, 0.14);
-      border: 1px solid rgba(255, 111, 145, 0.2);
-      color: #ffd6e0;
-      font-size: 12px;
+      background: rgba(198, 69, 35, 0.08);
+      border: 1px solid rgba(198, 69, 35, 0.16);
+      color: #c8573d;
+      font-size: 11px;
       font-weight: 700;
     }
 
     .product-card h3 {
-      margin: 14px 0 8px;
-      font-size: 22px;
-    }
-
-    .product-card p {
-      margin: 0;
-      color: var(--muted);
-      line-height: 1.65;
-      font-size: 14px;
+      margin: 10px 14px 0;
+      font-size: 18px;
+      color: #231a0e;
+      line-height: 1.35;
       min-height: 48px;
     }
 
+    .product-card p {
+      margin: 8px 14px 0;
+      color: #7d6d54;
+      line-height: 1.5;
+      font-size: 12px;
+      min-height: 54px;
+    }
+
     .product-meta {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
+      display: grid;
       gap: 12px;
-      margin-top: 18px;
+      margin-top: 14px;
+      padding: 0 14px;
     }
 
     .product-price {
       display: grid;
-      gap: 4px;
+      gap: 3px;
     }
 
     .product-price strong {
       font-size: 26px;
       line-height: 1;
       letter-spacing: -0.03em;
+      color: #9c6917;
     }
 
     .product-price-original {
-      color: var(--muted);
-      font-size: 12px;
+      color: #a89a84;
+      font-size: 11px;
       text-decoration: line-through;
-      text-decoration-color: rgba(255, 111, 145, 0.7);
+      text-decoration-color: rgba(198, 69, 35, 0.7);
     }
 
     .product-price span {
-      color: var(--muted);
-      font-size: 12px;
+      color: #86775f;
+      font-size: 11px;
       text-transform: uppercase;
       letter-spacing: 0.1em;
     }
 
     .product-select-btn {
+      width: 100%;
       white-space: nowrap;
+      justify-content: center;
+    }
+
+    .product-card-stats {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 10px 14px 0;
+      color: #857255;
+      font-size: 11px;
+      border-top: 1px solid rgba(57, 40, 16, 0.08);
+    }
+
+    .product-card-stats strong {
+      color: #4b3b1f;
+      font-size: 13px;
+      margin-left: 4px;
+    }
+
+    .contract-strip {
+      display: grid;
+      gap: 10px;
+      margin-bottom: 18px;
+    }
+
+    .contract-chip {
+      padding: 14px 16px;
+      border-radius: 16px;
+      border: 1px solid rgba(220, 186, 107, 0.12);
+      background: rgba(255, 255, 255, 0.03);
+    }
+
+    .contract-chip span {
+      display: block;
+      color: #b49b68;
+      font-size: 12px;
+      margin-bottom: 6px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .contract-chip code {
+      color: #fff2d3;
+      word-break: break-all;
+      font-size: 12px;
     }
 
     .selected-product {
@@ -1060,85 +1524,152 @@
     .wallet-divider::after { right: 0; }
 
     @media (max-width: 940px) {
-      .hero, .grid, .admin-grid, .admin-panel-grid, .field-grid, .stats, .product-grid {
+      .grid, .admin-grid, .admin-panel-grid, .field-grid, .stats {
         grid-template-columns: 1fr;
       }
 
-      .hero-stat-grid {
-        grid-template-columns: 1fr;
+      .page {
+        width: min(100%, calc(100% - 18px));
+        padding: 14px 0 42px;
+      }
+
+      .app-topbar {
+        grid-template-columns: minmax(0, 1fr) auto auto;
+      }
+
+      .wallet-pill {
+        min-width: 96px;
+        padding: 13px 10px;
+        font-size: 13px;
+      }
+
+      .category-grid {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+      }
+    }
+
+    @media (min-width: 941px) {
+      .page {
+        width: min(1200px, calc(100% - 32px));
+      }
+
+      .home-shell {
+        gap: 22px;
+      }
+
+      .product-grid {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+      }
+
+      .promo-track,
+      .promo-slide,
+      .promo-empty {
+        min-height: 320px;
+      }
+
+      .promo-slide img,
+      .promo-fallback {
+        height: 320px;
       }
     }
   </style>
 </head>
 <body>
   <div class="page">
-    <!-- Hero Section -->
-    <section class="hero">
-      <div>
-        <div class="pill"><span class="dot"></span>BSC Mainnet</div>
-        <h1>Asset Mall</h1>
-        <p>
-          使用 USDT 购买资产，实时读取链上奖励报价，自动完成推荐分账，并同步生成订单信息，适合商城销售、代理裂变和管理员后台跟单。
-        </p>
-        <div class="hero-badges">
-          <div class="hero-badge">实时奖励计算</div>
-          <div class="hero-badge">折扣商品展示</div>
-          <div class="hero-badge">订单后台管理</div>
-        </div>
-        <div class="hero-stat-grid">
-          <div class="hero-stat">
-            <span class="label">支付方式</span>
-            <strong>USDT 购买</strong>
-          </div>
-          <div class="hero-stat">
-            <span class="label">奖励模式</span>
-            <strong>链上实时发放</strong>
-          </div>
-          <div class="hero-stat">
-            <span class="label">运营支持</span>
-            <strong>订单后台管理</strong>
+    <section class="app-shell">
+      <div class="app-topbar">
+        <div class="app-brand">
+          <div class="brand-coin">A</div>
+          <div class="brand-copy">
+            <strong>Asset Mall</strong>
+            <span>BSC Member Store</span>
           </div>
         </div>
-        <div class="hero-actions">
-          <button class="secondary" id="connectBtn">连接钱包</button>
-          <button class="ghost" id="switchBtn">切换到 BSC</button>
-          <button class="ghost" id="copyRefLinkBtn">复制推荐链接</button>
-        </div>
+        <button class="wallet-pill" id="connectBtn">连接钱包</button>
+        <button class="menu-pill" id="menuBtn" aria-label="打开菜单">☰</button>
       </div>
-      <div class="hero-side">
-        <div class="mini">
-          <div class="label">收益分享合约</div>
-          <div class="value" id="revenueShareAddress">-</div>
-        </div>
-        <div class="mini">
-          <div class="label">奖励金库</div>
-          <div class="value" id="rewarderAddress">-</div>
-        </div>
-        <div class="mini">
-          <div class="label">价格预言机</div>
-          <div class="value" id="oracleAddress">-</div>
-        </div>
+      <div class="utility-row">
+        <button class="ghost utility-chip" id="switchBtn">切换到 BSC</button>
+        <button class="ghost utility-chip" id="copyRefLinkBtn">邀请好友</button>
       </div>
     </section>
 
-    <div class="segment-nav-wrap">
-      <div class="segment-nav" id="pageNav">
-        <button class="segment-tab active" data-view-target="home">首页</button>
-        <button class="segment-tab" data-view-target="purchase">购买下单</button>
-        <button class="segment-tab" data-view-target="chain">链上数据</button>
-        <button class="segment-tab" data-view-target="orders">订单中心</button>
-        <button class="segment-tab hidden" data-view-target="admin" data-admin-only="true">管理后台</button>
+    <div class="drawer-overlay" id="drawerOverlay">
+      <div class="side-drawer">
+        <div class="drawer-head">
+          <div>
+            <div class="drawer-title">Asset Mall</div>
+            <div class="drawer-subtitle">链上会员商城</div>
+          </div>
+          <button class="drawer-close" id="closeDrawerBtn" aria-label="关闭菜单">&times;</button>
+        </div>
+        <div class="drawer-menu">
+          <button class="drawer-item active" data-view-target="home">
+            <span class="drawer-icon">⌂</span>
+            <span>首页</span>
+            <span class="drawer-arrow">›</span>
+          </button>
+          <button class="drawer-item" data-view-target="purchase">
+            <span class="drawer-icon">🛒</span>
+            <span>商城下单</span>
+            <span class="drawer-arrow">›</span>
+          </button>
+          <button class="drawer-item" data-drawer-action="copy-ref">
+            <span class="drawer-icon">✦</span>
+            <span>邀请好友</span>
+            <span class="drawer-arrow">›</span>
+          </button>
+          <button class="drawer-item" data-view-target="chain">
+            <span class="drawer-icon">◎</span>
+            <span>我的资产</span>
+            <span class="drawer-arrow">›</span>
+          </button>
+          <button class="drawer-item" data-view-target="orders">
+            <span class="drawer-icon">☷</span>
+            <span>购物订单</span>
+            <span class="drawer-arrow">›</span>
+          </button>
+          <button class="drawer-item hidden" data-view-target="admin" data-admin-only="true">
+            <span class="drawer-icon">⚙</span>
+            <span>管理后台</span>
+            <span class="drawer-arrow">›</span>
+          </button>
+        </div>
       </div>
     </div>
 
-    <!-- Main Grid -->
-    <section class="section" id="homeSection" data-view-section="home">
-      <div class="card">
+    <section class="section home-shell" id="homeSection" data-view-section="home">
+      <div class="search-shell">
+        <span class="search-icon">⌕</span>
+        <input id="homeSearchInput" type="text" placeholder="请输入商品名称" />
+      </div>
+
+      <div class="promo-carousel">
+        <div class="promo-track" id="promoTrack">
+          <div class="promo-empty">正在加载推荐商品...</div>
+        </div>
+        <div class="promo-dots" id="promoDots"></div>
+      </div>
+
+      <div class="home-panel">
         <div class="section-head">
           <div>
-            <div class="section-kicker">Featured Products</div>
-            <h2>商城精选商品</h2>
-            <p>首页仅展示当前可购买商品。选择商品后，将自动切换到购买页继续完成下单。</p>
+            <div class="section-kicker">Quick Entry</div>
+            <h2>专区导航</h2>
+            <p>按商品标签、折扣与推荐入口快速浏览当前可购买商品。</p>
+          </div>
+        </div>
+        <div class="category-grid" id="categoryGrid">
+          <div class="muted">正在加载专区...</div>
+        </div>
+      </div>
+
+      <div class="home-panel">
+        <div class="section-head">
+          <div>
+            <div class="section-kicker">You May Like</div>
+            <h2>猜你喜欢</h2>
+            <p>首页仅展示当前可购买商品，点击卡片即可进入下单页完成购买。</p>
           </div>
         </div>
         <div class="product-grid" id="productGrid">
@@ -1256,6 +1787,21 @@
         <p class="desc">
           以下数值根据合约配置和当前用户上下文实时计算。
         </p>
+
+        <div class="contract-strip">
+          <div class="contract-chip">
+            <span>收益分享合约</span>
+            <code id="revenueShareAddress">-</code>
+          </div>
+          <div class="contract-chip">
+            <span>奖励金库</span>
+            <code id="rewarderAddress">-</code>
+          </div>
+          <div class="contract-chip">
+            <span>价格预言机</span>
+            <code id="oracleAddress">-</code>
+          </div>
+        </div>
 
         <div class="list">
           <div class="row"><span>钱包地址</span><code id="walletAddress">未连接</code></div>
