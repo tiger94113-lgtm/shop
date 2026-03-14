@@ -2652,7 +2652,13 @@ async function buyNow() {
 
 async function copyReferralLink() {
   try {
-    ensureConnected();
+    if (!state.account || !state.signer) {
+      setStatus("请先连接钱包以生成邀请链接。正在打开钱包...", "warn");
+      await connectWallet();
+      if (!state.account) {
+        throw new Error("仍未检测到钱包连接，无法生成邀请链接。");
+      }
+    }
     const baseUrl = getBaseUrl();
     const link = baseUrl + "?ref=" + state.account;
     await navigator.clipboard.writeText(link);
