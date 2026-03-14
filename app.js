@@ -9,17 +9,30 @@ const CONFIG = {
   chainIdHex: "0x38",
   chainId: 56,
   chainName: "BSC Mainnet",
-  // 面向中国大陆用户做过一轮可用性筛选的 BSC 主网公共 RPC 池
-  // 说明：官方 + 第三方混合，便于大陆网络环境下自动故障转移
+  // 借鉴 TokenPocket 公链列表与 ChainList 常见 BSC 节点后的候选池
+  // 排序策略：前 8 条作为主力测速池，后续作为扩展兜底池
   rpcUrls: [
-    "https://bsc-dataseed.binance.org",
-    "https://bsc-dataseed-public.bnbchain.org",
     "https://bsc.drpc.org",
+    "https://bsc-dataseed.binance.org",
+    "https://1rpc.io/bnb",
+    "https://bsc-dataseed1.defibit.io",
     "https://bsc-dataseed1.ninicoin.io",
+    "https://bsc-dataseed-public.bnbchain.org",
+    "https://bsc.publicnode.com",
+    "https://bnb.rpc.subquery.network/public",
+    "https://bsc-dataseed1.binance.org",
+    "https://bsc-dataseed2.binance.org",
+    "https://bsc-dataseed3.binance.org",
+    "https://bsc-dataseed4.binance.org",
+    "https://bsc-dataseed2.defibit.io",
+    "https://bsc-dataseed3.defibit.io",
+    "https://bsc-dataseed4.defibit.io",
+    "https://bsc-dataseed2.ninicoin.io",
+    "https://bsc-dataseed3.ninicoin.io",
+    "https://bsc-dataseed4.ninicoin.io",
     "https://bsc-dataseed.bnbchain.org",
     "https://bsc-dataseed1.bnbchain.org",
-    "https://bsc-rpc.publicnode.com",
-    "https://1rpc.io/bnb"
+    "https://bsc-dataseed2.bnbchain.org"
   ],
   blockExplorer: "https://bscscan.com",
 
@@ -297,8 +310,8 @@ async function createProviderWithFallback() {
     }
   }
 
-  const primaryPool = orderedUrls.slice(0, 4);
-  const backupPool = orderedUrls.slice(4);
+  const primaryPool = orderedUrls.slice(0, 8);
+  const backupPool = orderedUrls.slice(8);
 
   const primary = await selectFastestRpc(primaryPool, 2200);
   if (primary) {
