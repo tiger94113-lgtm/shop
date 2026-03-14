@@ -80,6 +80,7 @@ const state = {
   signer: null,
   account: null,
   chainId: null,
+  activePage: "home",
   lastWalletType: null,
   activeWalletProvider: null,
   isSubmitting: false,
@@ -247,6 +248,52 @@ function setOrderStatus(message, type = "") {
   ui.orderStatusBox.textContent = message;
   ui.orderStatusBox.className = "status";
   if (type) ui.orderStatusBox.classList.add(type);
+}
+
+function updatePageView() {
+  const requestedPage = state.activePage || "home";
+  const activePage = requestedPage === "admin" && !state.isAdmin ? "home" : requestedPage;
+  state.activePage = activePage;
+
+  document.querySelectorAll("[data-view-target]").forEach((button) => {
+    const target = button.getAttribute("data-view-target");
+    const requiresAdmin = button.getAttribute("data-admin-only") === "true";
+    const available = !requiresAdmin || state.isAdmin;
+    button.classList.toggle("hidden", !available);
+    button.classList.toggle("active", available && target === activePage);
+  });
+
+  document.querySelectorAll("[data-view-section]").forEach((section) => {
+    const target = section.getAttribute("data-view-section");
+    const requiresAdmin = section.getAttribute("data-admin-only") === "true";
+    const visible = target === activePage && (!requiresAdmin || state.isAdmin);
+    section.classList.toggle("hidden", !visible);
+  });
+
+  if (ui.tradeGrid) {
+    const visiblePanels = Array.from(ui.tradeGrid.querySelectorAll("[data-view-section]"))
+      .filter((panel) => !panel.classList.contains("hidden"));
+    ui.tradeGrid.classList.toggle("hidden", visiblePanels.length === 0);
+    ui.tradeGrid.classList.toggle("single-pane", visiblePanels.length <= 1);
+  }
+}
+
+function setActivePage(page, options = {}) {
+  if (page === "admin" && !state.isAdmin) {
+    state.activePage = "home";
+    updatePageView();
+    renderProducts();
+    setStatus("连接管理员钱包后可进入管理后台。", "warn");
+    return;
+  }
+
+  state.activePage = page || "home";
+  updatePageView();
+  renderProducts();
+
+  if (!options.preserveScroll && ui.pageNav) {
+    ui.pageNav.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
 }
 
 function shortAddress(value) {
@@ -1060,6 +1107,7 @@ function renderProducts() {
   }
 
   ui.productGrid.innerHTML = activeProducts.map((product) => {
+    const isHomePage = state.activePage === "home";
     const imageHtml = /^https?:\/\//i.test(product.image)
       ? '<img src="' + escapeHtml(product.image) + '" alt="' + escapeHtml(product.name) + '">'
       : escapeHtml(product.image || "🛍️");
@@ -1080,7 +1128,7 @@ function renderProducts() {
         '<div class="product-meta">' +
           priceBlock +
           '<button class="' + (product.id === state.selectedProductId ? 'primary' : 'ghost') + ' product-select-btn" data-select-product="' + escapeHtml(product.id) + '">' +
-            (product.id === state.selectedProductId ? "已选择" : "选择商品") +
+            (product.id === state.selectedProductId ? (isHomePage ? "前往购买" : "已选择") : (isHomePage ? "选择并购买" : "选择商品")) +
           '</button>' +
         '</div>' +
       '</article>'
@@ -1091,6 +1139,11 @@ function renderProducts() {
     button.addEventListener("click", () => {
       setSelectedProduct(button.getAttribute("data-select-product"));
       const current = getSelectedProduct();
+      if (state.activePage === "home") {
+        setActivePage("purchase");
+        setStatus(current ? "已选择商品: " + current.name + "，请继续填写订单信息。" : "商品已切换。", "ok");
+        return;
+      }
       setStatus(current ? "已选择商品: " + current.name : "商品已切换。", "ok");
     });
   });
@@ -1150,12 +1203,14 @@ function renderAdminProducts() {
     ui.adminProductsSection.classList.add("hidden");
     ui.exportAllCsvBtn.classList.add("hidden");
     ui.exportAllJsonBtn.classList.add("hidden");
+    updatePageView();
     return;
   }
 
   ui.adminProductsSection.classList.remove("hidden");
   ui.exportAllCsvBtn.classList.remove("hidden");
   ui.exportAllJsonBtn.classList.remove("hidden");
+  updatePageView();
 
   // 渲染管理员列表
   renderAdminList();
@@ -2333,6 +2388,7 @@ function initUI() {
   const ids = [
     "connectBtn", "switchBtn", "copyRefLinkBtn", "previewBtn", "approveBtn", "buyBtn",
     "amountInput", "slippageInput", "referrerInput",
+    "pageNav", "tradeGrid",
     "productGrid", "selectedProductBox", "selectedProductName", "selectedProductTag", "selectedProductDesc",
     "selectedProductPrice", "selectedProductOriginalPrice", "selectedProductDiscount", "selectedProductSku", "adminProductsSection", "productAdminList", "productStatusBox",
     "productNameInput", "productOriginalPriceInput", "productPriceInput", "productTagInput", "productImageInput", "productDescriptionInput",
@@ -2393,6 +2449,11 @@ async function init() {
     ui.connectBtn.addEventListener("click", connectWallet);
     ui.switchBtn.addEventListener("click", switchToBsc);
     ui.copyRefLinkBtn.addEventListener("click", copyReferralLink);
+    document.querySelectorAll("[data-view-target]").forEach((tab) => {
+      tab.addEventListener("click", () => {
+        setActivePage(tab.getAttribute("data-view-target"));
+      });
+    });
 
     // 移动端钱包内置浏览器自动连接
     await autoConnectInAppWallet();
@@ -2427,6 +2488,7 @@ async function init() {
     renderAdminProducts();
     await reconcileOrders();
     renderOrders();
+    setActivePage("home", { preserveScroll: true });
     setStatus(initStatusMessage, initStatusType);
   } catch (error) {
     console.error("初始化失败:", error);
