@@ -5,7 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Asset Mall - USDT 收益分享平台</title>
   <meta name="description" content="使用 USDT 购买资产，获得实时奖励。支持推荐奖励机制。" />
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🛒</text></svg>" />
+  <meta name="theme-color" content="#0b0806" />
+  <link rel="icon" type="image/png" href="./image.png" />
+  <link rel="shortcut icon" type="image/png" href="./image.png" />
+  <link rel="apple-touch-icon" href="./image.png" />
   <style>
     :root {
       --bg: #070504;
@@ -513,6 +516,14 @@
       box-shadow: 0 10px 22px rgba(0, 0, 0, 0.35);
     }
 
+    .brand-coin img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+      border-radius: inherit;
+    }
+
     .brand-copy {
       display: grid;
       gap: 2px;
@@ -610,6 +621,30 @@
       margin-bottom: 18px;
       padding-bottom: 14px;
       border-bottom: 1px solid rgba(220, 186, 107, 0.14);
+    }
+
+    .drawer-brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-width: 0;
+    }
+
+    .drawer-logo {
+      width: 46px;
+      height: 46px;
+      border-radius: 50%;
+      overflow: hidden;
+      border: 1px solid rgba(241, 203, 117, 0.34);
+      box-shadow: 0 10px 22px rgba(0, 0, 0, 0.25);
+      flex: 0 0 auto;
+    }
+
+    .drawer-logo img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
     }
 
     .drawer-title {
@@ -1034,6 +1069,7 @@
       line-height: 1.4;
       min-height: 44px;
       display: -webkit-box;
+      line-clamp: 2;
       -webkit-line-clamp: 2;
       -webkit-box-orient: vertical;
       overflow: hidden;
@@ -1046,6 +1082,7 @@
       font-size: 11px;
       min-height: 0;
       display: -webkit-box;
+      line-clamp: 1;
       -webkit-line-clamp: 1;
       -webkit-box-orient: vertical;
       overflow: hidden;
@@ -1639,7 +1676,9 @@
     <section class="app-shell">
       <div class="app-topbar">
         <div class="app-brand">
-          <div class="brand-coin">A</div>
+          <div class="brand-coin">
+            <img src="./image.png" alt="Asset Mall Logo" />
+          </div>
           <div class="brand-copy">
             <strong>Asset Mall</strong>
             <span>BSC Member Store</span>
@@ -1657,9 +1696,14 @@
     <div class="drawer-overlay" id="drawerOverlay">
       <div class="side-drawer">
         <div class="drawer-head">
-          <div>
-            <div class="drawer-title">Asset Mall</div>
-            <div class="drawer-subtitle">链上会员商城</div>
+          <div class="drawer-brand">
+            <div class="drawer-logo">
+              <img src="./image.png" alt="Asset Mall Logo" />
+            </div>
+            <div>
+              <div class="drawer-title">Asset Mall</div>
+              <div class="drawer-subtitle">链上会员商城</div>
+            </div>
           </div>
           <button class="drawer-close" id="closeDrawerBtn" aria-label="关闭菜单">&times;</button>
         </div>
