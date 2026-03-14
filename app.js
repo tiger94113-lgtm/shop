@@ -1693,9 +1693,14 @@ function updateWalletButtonState() {
   ui.connectBtn.title = state.account || "连接钱包";
 }
 
-async function loadContracts() {
-  // 初始化 provider，自动故障转移
-  state.provider = await createProviderWithFallback();
+async function loadContracts(providerOverride) {
+  // 仅使用钱包注入的 provider，不再依赖公共 RPC
+  const provider = providerOverride || state.browserProvider;
+  if (!provider) {
+    throw new Error("请先连接钱包后再加载链上数据。");
+  }
+
+  state.provider = provider;
 
   // 初始化合约
   state.revenueShare = new ethers.Contract(CONFIG.revenueShare, REVENUE_SHARE_ABI, state.provider);
@@ -1928,6 +1933,10 @@ async function connectWithWallet(walletType) {
     state.account = await state.signer.getAddress();
     state.chainId = Number(network.chainId);
 
+    // 使用钱包 provider 加载链上合约与配置
+    await loadContracts(state.browserProvider);
+    renderProducts();
+
     // 检查是否为管理员
     const isContractOwner = state.adminAddress !== ethers.ZeroAddress &&
                             state.account.toLowerCase() === state.adminAddress.toLowerCase();
@@ -2028,7 +2037,7 @@ async function switchToBsc() {
 }
 
 async function refreshWalletMetrics() {
-  if (!state.account) {
+  if (!state.account || !state.usdt) {
     ui.usdtBalance.textContent = "-";
     ui.usdtAllowance.textContent = "-";
     return;
@@ -2094,6 +2103,9 @@ function bindWalletProviderEvents(provider) {
 }
 
 async function getSplitPreview(usdtAmount) {
+  if (!state.revenueShare) {
+    throw new Error("合约未加载，请先连接钱包。");
+  }
   const previewUser = state.account || ethers.ZeroAddress;
   const preview = await state.revenueShare.previewSplit(previewUser, usdtAmount);
 
@@ -2150,6 +2162,11 @@ async function reconcileOrders({ silent = true } = {}) {
 
 async function refreshPreview() {
   try {
+    if (!state.revenueShare || !state.rewarder) {
+      setStatus("请先连接钱包以加载合约，再刷新报价。", "warn");
+      return;
+    }
+
     if (!getSelectedProduct()) {
       resetPreview();
       setStatus("请先选择一个商品。", "warn");
@@ -2737,11 +2754,12 @@ async function init() {
       ui.referrerInput.value = queryReferrer;
     }
 
-    // 加载合约
-    await loadContracts();
-
-    if (!window.ethereum && isFileProtocol()) {
-      initStatusMessage = "当前页面是 file:// 本地文件模式。若钱包未注入，请改用本地 HTTP 服务打开，或在钱包扩展里允许访问文件网址。";
+    // 钱包未连接时不再走公共 RPC，提示用户连接钱包后再读取链上数据
+    if (!window.ethereum) {
+      initStatusMessage = "未检测到钱包。请安装/打开钱包扩展并连接后读取链上数据。";
+      initStatusType = "warn";
+    } else if (isFileProtocol()) {
+      initStatusMessage = "当前页面是 file:// 本地文件模式。请改用本地 HTTP 服务或在钱包扩展里允许访问文件网址。";
       initStatusType = "warn";
     }
 
