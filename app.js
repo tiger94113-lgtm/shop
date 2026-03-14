@@ -1304,19 +1304,23 @@ function renderProducts() {
 
     return (
       '<article class="product-card' + (product.id === state.selectedProductId ? ' active' : '') + '">' +
-        '<div class="product-cover">' + imageHtml + '</div>' +
-        '<div class="product-tag-row"><span class="product-tag">' + escapeHtml(product.tag || "商品") + '</span>' + discountBadge + '</div>' +
-        '<h3>' + escapeHtml(product.name) + '</h3>' +
-        '<p>' + escapeHtml(product.description || "暂无商品说明。") + '</p>' +
-        '<div class="product-meta">' +
-          priceBlock +
-          '<button class="' + (product.id === state.selectedProductId ? 'primary' : 'ghost') + ' product-select-btn" data-select-product="' + escapeHtml(product.id) + '">' +
-            (product.id === state.selectedProductId ? (isHomePage ? "前往购买" : "已选择") : (isHomePage ? "选择并购买" : "选择商品")) +
-          '</button>' +
+        '<div class="product-cover">' +
+          imageHtml +
+          '<div class="product-cover-badges"><span class="product-tag">' + escapeHtml(product.tag || "商品") + '</span>' + discountBadge + '</div>' +
         '</div>' +
-        '<div class="product-card-stats">' +
-          '<span>SKU<strong>' + escapeHtml(product.sku || "-") + '</strong></span>' +
-          '<span>' + escapeHtml(priceSummary.hasDiscount ? ('立省 ' + priceSummary.discountPercent + '%') : '标准价') + '</span>' +
+        '<div class="product-card-body">' +
+          '<h3>' + escapeHtml(product.name) + '</h3>' +
+          '<p>' + escapeHtml(product.description || "暂无商品说明。") + '</p>' +
+          '<div class="product-meta">' +
+            priceBlock +
+            '<button class="' + (product.id === state.selectedProductId ? 'primary' : 'ghost') + ' product-select-btn" data-select-product="' + escapeHtml(product.id) + '">' +
+              (product.id === state.selectedProductId ? (isHomePage ? "前往购买" : "已选择") : (isHomePage ? "选择并购买" : "选择商品")) +
+            '</button>' +
+          '</div>' +
+          '<div class="product-card-stats">' +
+            '<span>商品编号<strong>' + escapeHtml(product.sku || "-") + '</strong></span>' +
+            '<span>优惠说明<strong>' + escapeHtml(priceSummary.hasDiscount ? ('立省 ' + priceSummary.discountPercent + '%') : '标准价') + '</strong></span>' +
+          '</div>' +
         '</div>' +
       '</article>'
     );
